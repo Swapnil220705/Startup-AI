@@ -83,12 +83,16 @@ export const MVPTab = ({ data, isDark }) => (
       <p className={`${isDark ? 'text-gray-300' : 'text-gray-700'} mb-6`}>
         Start with these core features to validate your concept and gather user feedback:
       </p>
-      {data.mvp.map((feature, index) => (
-        <div key={index} className={`flex items-start space-x-3 p-4 rounded-lg ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
-          <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
-          <span className={`${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{feature}</span>
-        </div>
-      ))}
+      {Array.isArray(data.mvp) && data.mvp.length > 0 ? (
+  data.mvp.map((feature, index) => (
+    <div key={index} className={`flex items-start space-x-3 p-4 rounded-lg ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
+      <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
+      <span className={`${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{feature}</span>
+    </div>
+  ))
+) : (
+  <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>No MVP data available.</p>
+)}
     </div>
   </div>
 );
@@ -97,7 +101,7 @@ export const RevenueTab = ({ data, isDark }) => (
   <div className="space-y-6">
     <h2 className="text-2xl font-bold">Revenue & Monetization</h2>
     <div className="grid gap-6">
-      {data.monetization.map((model, index) => (
+      {data.revenue.map((model, index) => (
         <div key={index} className={`p-6 rounded-xl ${isDark ? 'bg-gray-800' : 'bg-white'} shadow-lg`}>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-semibold text-indigo-600">{model.model}</h3>

@@ -1,33 +1,25 @@
-// backend/models/leanCanvas.js
+// backend/models/mvpGenerator.js
 const axios = require('axios');
 require('dotenv').config();
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MODEL_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent';
 
-const generateLeanCanvas = async (data) => {
+const generateMVP = async (data) => {
   const prompt = `
-Generate a Lean Canvas for a startup with the following:
+Based on the following startup details, generate a Minimum Viable Product (MVP) feature list:
+
 Startup Name: ${data.startupName}
 Problem: ${data.problem}
 Solution: ${data.solution}
-Industry: ${data.industry}
 Target Audience: ${data.targetAudience}
-Unique Selling Proposition: ${data.usp}
 
 Return only valid JSON with these keys and nothing else (no explanation, no markdown):
 {
   "startupName": "",
-  "problem": "",
-  "solution": "",
-  "audience":"",
-  "keyMetrics": "",
-  "uniqueValueProposition": "",
-  "channels": "",
-  "customerSegments": "",
-  "costStructure": "",
-  "revenueStreams": "",
-  "unfairAdvantage": ""
+  "coreFeatures": [],
+  "technicalRequirements": "",
+  "launchTimeline": ""
 }
 `;
 
@@ -35,12 +27,12 @@ Return only valid JSON with these keys and nothing else (no explanation, no mark
     const response = await axios.post(
       MODEL_URL + `?key=${GEMINI_API_KEY}`,
       {
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [{ parts: [{ text: prompt }] }]
       },
       {
         headers: {
-          'Content-Type': 'application/json',
-        },
+          'Content-Type': 'application/json'
+        }
       }
     );
 
@@ -51,9 +43,9 @@ Return only valid JSON with these keys and nothing else (no explanation, no mark
 
     return JSON.parse(rawText);
   } catch (error) {
-    console.error('Gemini Lean Canvas Error:', error.response?.data || error.message);
-    throw new Error('Failed to generate Lean Canvas from Gemini');
+    console.error('Gemini MVP Error:', error.response?.data || error.message);
+    throw new Error('Failed to generate MVP from Gemini');
   }
 };
 
-module.exports = { generateLeanCanvas };
+module.exports = { generateMVP };

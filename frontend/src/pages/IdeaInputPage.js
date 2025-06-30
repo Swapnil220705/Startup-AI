@@ -23,10 +23,11 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
   try {
     const payload = {
       startupName: formData.name,
+      industry: formData.domain,
       problem: formData.problem,
       solution: formData.solution,
-      industry: formData.domain,
-      targetAudience: formData.audience
+      targetAudience: formData.audience,
+      uniqueValueProposition: formData.usp
     };
 
     // Call all backend endpoints in parallel

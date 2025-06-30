@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { generatePitchDeck } = require('../controllers/pitchController');
+const { generatePitch } = require('../controllers/pitchController');
 
-router.post('/', generatePitchDeck);
+router.post('/', generatePitch);
 
 module.exports = router;
+

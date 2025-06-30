@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { generateRevenueModel } = require('../controllers/revenueController');
+const { generateRevenue } = require('../controllers/revenueController');
 
-router.post('/', generateRevenueModel);
+router.post('/', generateRevenue);
 
 module.exports = router;

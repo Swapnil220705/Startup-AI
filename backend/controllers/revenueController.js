@@ -1,29 +1,9 @@
-const { callAI } = require('../services/aiService');
+const { generateRevenue } = require('../models/revenueModel');
 
-const generateRevenueModel = async (req, res) => {
+const generateRevenueController = async (req, res) => {
   try {
     const inputData = req.body;
-    // const aiResponse = await callAI('/revenue', inputData);
-    const aiResponse = {
-      "revenueStreams": [
-        "Commission per caregiver booking",
-        "Premium user subscription for added features",
-        "Partnerships with hospitals and eldercare facilities",
-        "Featured listings for caregivers",
-        "Ads from health & wellness brands"
-      ],
-      "pricingModel": {
-        "Basic": "Free with limited features",
-        "Premium": "₹299/month with priority booking & customer support",
-        "Enterprise": "Custom pricing for hospitals/institutions"
-      },
-      "costStructure": [
-        "AI API usage and backend servers",
-        "Caregiver verification and onboarding",
-        "Marketing and promotions",
-        "Customer support operations"
-      ]
-    };
+    const aiResponse = await generateRevenue('/revenue', inputData);
     res.status(200).json(aiResponse);
   } catch (error) {
     console.error('Revenue Error:', error.message);
@@ -31,4 +11,4 @@ const generateRevenueModel = async (req, res) => {
   }
 };
 
-module.exports = { generateRevenueModel };
+module.exports = { generateRevenue : generateRevenueController };

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { generateCompetitorList } = require('../controllers/competitorController');
+const { generateCompetitors } = require('../controllers/competitorController');
 
-router.post('/', generateCompetitorList);
+router.post('/', generateCompetitors);
 
 module.exports = router;

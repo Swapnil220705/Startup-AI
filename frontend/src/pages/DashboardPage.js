@@ -27,7 +27,12 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
   useEffect(() => {
     const collectedData = {
       overview: {
-        name: JSON.parse(localStorage.getItem('leanCanvas'))?.startupName || 'Your Startup'
+        name: JSON.parse(localStorage.getItem('leanCanvas'))?.startupName || 'Your Startup',
+        industry: JSON.parse(localStorage.getItem('leanCanvas'))?.industry || '',
+        problem: JSON.parse(localStorage.getItem('leanCanvas'))?.problem || '',
+        solution: JSON.parse(localStorage.getItem('leanCanvas'))?.solution || '',
+        audience: JSON.parse(localStorage.getItem('leanCanvas'))?.targetAudience || '',
+        usp: JSON.parse(localStorage.getItem('leanCanvas'))?.uniqueValueProposition || ''
       },
       leanCanvas: JSON.parse(localStorage.getItem('leanCanvas')),
       mvp: JSON.parse(localStorage.getItem('mvp')),
