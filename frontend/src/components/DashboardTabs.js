@@ -1,4 +1,3 @@
-
 // src/components/DashboardTabs.jsx
 import React from 'react';
 import { CheckCircle, FileText, PieChart } from 'lucide-react';

@@ -20,7 +20,7 @@ const Header = ({ navigate, isDark, toggleTheme, showNavigation = false }) => {
             
             {showNavigation && (
               <nav className="hidden md:flex space-x-6 ml-8">
-                <button onClick={() => navigate('/dashboard')} className={`hover:text-indigo-600 transition-colors ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                {/* <button onClick={() => navigate('/dashboard')} className={`hover:text-indigo-600 transition-colors ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                   Dashboard
                 </button>
                 <button onClick={() => navigate('/pitch-preview')} className={`hover:text-indigo-600 transition-colors ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
@@ -28,7 +28,7 @@ const Header = ({ navigate, isDark, toggleTheme, showNavigation = false }) => {
                 </button>
                 <button onClick={() => navigate('/my-plans')} className={`hover:text-indigo-600 transition-colors ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                   My Plans
-                </button>
+                </button> */}
               </nav>
             )}
           </div>

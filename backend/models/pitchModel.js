@@ -3,7 +3,7 @@ const axios = require('axios');
 require('dotenv').config();
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent';
+const MODEL_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent';
 
 const generatePitch = async (data) => {
   const prompt = `
