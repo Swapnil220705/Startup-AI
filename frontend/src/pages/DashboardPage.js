@@ -23,26 +23,54 @@ import {
 const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const collectedData = {
-      overview: {
-        name: JSON.parse(localStorage.getItem('leanCanvas'))?.startupName || 'Your Startup',
-        industry: JSON.parse(localStorage.getItem('leanCanvas'))?.industry || '',
-        problem: JSON.parse(localStorage.getItem('leanCanvas'))?.problem || '',
-        solution: JSON.parse(localStorage.getItem('leanCanvas'))?.solution || '',
-        audience: JSON.parse(localStorage.getItem('leanCanvas'))?.targetAudience || '',
-        usp: JSON.parse(localStorage.getItem('leanCanvas'))?.uniqueValueProposition || ''
-      },
-      leanCanvas: JSON.parse(localStorage.getItem('leanCanvas')),
-      mvp: JSON.parse(localStorage.getItem('mvp')),
-      revenue: JSON.parse(localStorage.getItem('revenue')),
-      pitch: JSON.parse(localStorage.getItem('pitch')),
-      personas: JSON.parse(localStorage.getItem('personas')),
-      competitors: JSON.parse(localStorage.getItem('competitors'))
-    };
+    try {
+      // Get form data for overview
+      const formData = JSON.parse(localStorage.getItem('formData') || '{}');
+      
+      // Get individual data pieces
+      const leanCanvas = JSON.parse(localStorage.getItem('leanCanvas') || 'null');
+      const mvp = JSON.parse(localStorage.getItem('mvp') || 'null');
+      const revenue = JSON.parse(localStorage.getItem('revenue') || 'null');
+      const pitch = JSON.parse(localStorage.getItem('pitch') || 'null');
+      const personas = JSON.parse(localStorage.getItem('personas') || 'null');
+      const competitors = JSON.parse(localStorage.getItem('competitors') || 'null');
 
-    setData(collectedData);
+      console.log('Dashboard data loaded:', {
+        formData,
+        leanCanvas,
+        mvp,
+        revenue,
+        pitch,
+        personas,
+        competitors
+      });
+
+      const collectedData = {
+        overview: {
+          name: formData.name || leanCanvas?.startupName || 'Your Startup',
+          industry: formData.domain || leanCanvas?.industry || '',
+          problem: formData.problem || leanCanvas?.problem || '',
+          solution: formData.solution || leanCanvas?.solution || '',
+          audience: formData.audience || leanCanvas?.audience || leanCanvas?.customerSegments || '',
+          usp: formData.usp || leanCanvas?.uniqueValueProposition || ''
+        },
+        leanCanvas: leanCanvas,
+        mvp: mvp,
+        revenue: revenue,
+        pitch: pitch,
+        personas: personas,
+        competitors: competitors
+      };
+
+      setData(collectedData);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+      setLoading(false);
+    }
   }, []);
 
   const tabs = [
@@ -55,12 +83,37 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
     { id: 'export', label: 'Export', icon: <Download className="w-4 h-4" /> }
   ];
 
+  if (loading) {
+    return (
+      <div className={`min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+        <Header navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} showNavigation={true} />
+        <div className="p-10 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p>Loading business plan...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!data) {
-    return <div className="p-10 text-center">Loading business plan...</div>;
+    return (
+      <div className={`min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+        <Header navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} showNavigation={true} />
+        <div className="p-10 text-center">
+          <p>No business plan data found. Please go back and generate a new plan.</p>
+          <button 
+            onClick={() => navigate('/input')}
+            className="mt-4 bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700"
+          >
+            Generate New Plan
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen">
+    <div className={`min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
       <Header navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} showNavigation={true} />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

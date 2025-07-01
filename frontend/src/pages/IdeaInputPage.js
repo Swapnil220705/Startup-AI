@@ -6,63 +6,79 @@ import { businessDomains } from '../utils/mockData';
 import axios from 'axios';
 
 const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoading, isDark, toggleTheme }) => {
-  // const handleSubmit = async (e) => {
-  //   e.preventDefault();
-  //   setIsLoading(true);
-    
-  //   // Simulate API call
-  //   setTimeout(() => {
-  //     setIsLoading(false);
-  //     navigate('/dashboard');
-  //   }, 3000);
-  // };
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  setIsLoading(true);
+    e.preventDefault();
+    setIsLoading(true);
 
-  try {
-    const payload = {
-      startupName: formData.name,
-      industry: formData.domain,
-      problem: formData.problem,
-      solution: formData.solution,
-      targetAudience: formData.audience,
-      uniqueValueProposition: formData.usp
-    };
+    try {
+      const payload = {
+        startupName: formData.name,
+        industry: formData.domain,
+        problem: formData.problem,
+        solution: formData.solution,
+        targetAudience: formData.audience,
+        uniqueValueProposition: formData.usp
+      };
 
-    // Call all backend endpoints in parallel
-    const [
-      leanCanvasRes,
-      mvpRes,
-      revenueRes,
-      pitchRes,
-      personaRes,
-      competitorRes
-    ] = await Promise.all([
-      axios.post('http://localhost:4000/api/lean-canvas', payload),
-      axios.post('http://localhost:4000/api/mvp', payload),
-      axios.post('http://localhost:4000/api/revenue', payload),
-      axios.post('http://localhost:4000/api/pitch', payload),
-      axios.post('http://localhost:4000/api/personas', payload),
-      axios.post('http://localhost:4000/api/competitors', payload)
-    ]);
+      console.log('Sending payload:', payload);
 
-    // Store everything into shared context or localStorage (for now we use localStorage)
-    localStorage.setItem('leanCanvas', JSON.stringify(leanCanvasRes.data));
-    localStorage.setItem('mvp', JSON.stringify(mvpRes.data));
-    localStorage.setItem('revenue', JSON.stringify(revenueRes.data));
-    localStorage.setItem('pitch', JSON.stringify(pitchRes.data));
-    localStorage.setItem('personas', JSON.stringify(personaRes.data));
-    localStorage.setItem('competitors', JSON.stringify(competitorRes.data));
+      // Call all backend endpoints in parallel
+      const [
+        leanCanvasRes,
+        mvpRes,
+        revenueRes,
+        pitchRes,
+        personaRes,
+        competitorRes
+      ] = await Promise.all([
+        axios.post('http://localhost:4000/api/lean-canvas', payload),
+        axios.post('http://localhost:4000/api/mvp', payload),
+        axios.post('http://localhost:4000/api/revenue', payload),
+        axios.post('http://localhost:4000/api/pitch', payload),
+        axios.post('http://localhost:4000/api/personas', payload),
+        axios.post('http://localhost:4000/api/competitors', payload)
+      ]);
 
-    setIsLoading(false);
-    navigate('/dashboard');
-  } catch (error) {
-    console.error('API Error:', error);
-    alert('Failed to generate business plan. Please try again.');
-    setIsLoading(false);
-  }
-};
+      console.log('API Responses:', {
+        leanCanvas: leanCanvasRes.data,
+        mvp: mvpRes.data,
+        revenue: revenueRes.data,
+        pitch: pitchRes.data,
+        personas: personaRes.data,
+        competitors: competitorRes.data
+      });
+
+      // Store each response individually with the keys that DashboardPage expects
+      localStorage.setItem('leanCanvas', JSON.stringify(leanCanvasRes.data));
+      localStorage.setItem('mvp', JSON.stringify(mvpRes.data.coreFeatures || mvpRes.data));
+      localStorage.setItem('revenue', JSON.stringify([
+        {
+          model: "Primary Revenue Stream",
+          description: revenueRes.data.revenueStreams,
+          projection: revenueRes.data.expectedMonthlyRevenue
+        },
+        {
+          model: "Pricing Strategy", 
+          description: revenueRes.data.pricingStrategy,
+          projection: "Growth Phase"
+        }
+      ]));
+      localStorage.setItem('pitch', JSON.stringify(pitchRes.data));
+      localStorage.setItem('personas', JSON.stringify(personaRes.data.personas || personaRes.data));
+      localStorage.setItem('competitors', JSON.stringify(competitorRes.data.competitors || competitorRes.data));
+      
+      // Also store form data for overview section
+      localStorage.setItem('formData', JSON.stringify(formData));
+
+      setIsLoading(false);
+      navigate('/dashboard');
+    } catch (error) {
+      console.error('API Error:', error);
+      console.error('Error details:', error.response?.data);
+      alert(`Failed to generate business plan: ${error.response?.data?.message || error.message}`);
+      setIsLoading(false);
+    }
+  };
 
   const handleInputChange = (field, value) => {
     setFormData({ ...formData, [field]: value });
@@ -70,18 +86,21 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mx-auto mb-4"></div>
           <h2 className="text-2xl font-semibold mb-2">Analyzing your startup idea...</h2>
           <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Our AI is generating your business plan</p>
+          <div className="mt-4 text-sm text-gray-500">
+            <p>This may take 30-60 seconds...</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen">
+    <div className={`min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
       <Header navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} />
       
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
