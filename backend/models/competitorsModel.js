@@ -7,33 +7,36 @@ const MODEL_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-2.
 
 const generateCompetitors = async (data) => {
   const prompt = `
-Identify 3 potential competitors for the following startup:
-Startup Name: ${data.startupName}
-Industry: ${data.industry}
-Solution: ${data.solution}
-Target Audience: ${data.targetAudience}
+  You're a market research expert. Based on the following startup details, identify 3 real potential competitors or similar platforms in the market.
 
-Return the response in JSON with this structure:
-{
-  "competitors": [
-    {
-      "name": "",
-      "description": "",
-      "differentiator": ""
-    },
-    {
-      "name": "",
-      "description": "",
-      "differentiator": ""
-    },
-    {
-      "name": "",
-      "description": "",
-      "differentiator": ""
-    }
-  ]
-}
-`;
+  Startup Name: ${data.startupName}
+  Problem: ${data.problem}
+  Solution: ${data.solution}
+  Industry: ${data.industry}
+  Target Audience: ${data.targetAudience}
+  Unique Selling Proposition: ${data.usp}
+
+  Return the result as a JSON object:
+  {
+    "competitors": [
+      {
+        "name": "Competitor 1 Name",
+        "description": "What they offer and how they work",
+        "differentiator": "How our startup is different"
+      },
+      {
+        "name": "Competitor 2 Name",
+        "description": "What they offer and how they work",
+        "differentiator": "How our startup is different"
+      },
+      {
+        "name": "Competitor 3 Name",
+        "description": "What they offer and how they work",
+        "differentiator": "How our startup is different"
+      }
+    ]
+  }
+  `;
 
   try {
     const response = await axios.post(

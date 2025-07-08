@@ -7,18 +7,28 @@ const MODEL_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-2.
 
 const generatePitch = async (data) => {
   const prompt = `
-Create a compelling elevator pitch for the following startup:
-Startup Name: ${data.startupName}
-Problem: ${data.problem}
-Solution: ${data.solution}
-Industry: ${data.industry}
-Target Audience: ${data.targetAudience}
+  You are a pitch deck expert helping startups craft powerful elevator pitches that are short, sharp, and investor-friendly.
 
-Return the response in JSON with this structure:
-{
-  "elevatorPitch": ""
-}
-`;
+  Use the following startup details to generate a compelling pitch:
+
+  Startup Name: ${data.startupName}
+  Problem: ${data.problem}
+  Solution: ${data.solution}
+  Industry: ${data.industry}
+  Target Audience: ${data.targetAudience}
+  Unique Value or USP: ${data.usp || 'Not specified'}
+
+  Guidelines:
+  - 2 to 4 sentences only.
+  - Be punchy and persuasive.
+  - Clearly state the value to the target audience.
+  - Avoid filler phrases like “we aim to” or “we strive to”.
+
+  Return ONLY valid JSON:
+  {
+    "elevatorPitch": "The pitch here..."
+  }
+  `;
 
   try {
     const response = await axios.post(

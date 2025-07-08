@@ -7,29 +7,34 @@ const MODEL_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-2.
 
 const generateLeanCanvas = async (data) => {
   const prompt = `
-Generate a Lean Canvas for a startup with the following:
-Startup Name: ${data.startupName}
-Problem: ${data.problem}
-Solution: ${data.solution}
-Industry: ${data.industry}
-Target Audience: ${data.targetAudience}
-Unique Selling Proposition: ${data.usp}
+  You are a Lean Canvas strategist. Create a startup Lean Canvas based on the inputs below. Be specific and concise.
 
-Return only valid JSON with these keys and nothing else (no explanation, no markdown):
-{
-  "startupName": "",
-  "problem": "",
-  "solution": "",
-  "audience":"",
-  "keyMetrics": "",
-  "uniqueValueProposition": "",
-  "channels": "",
-  "customerSegments": "",
-  "costStructure": "",
-  "revenueStreams": "",
-  "unfairAdvantage": ""
-}
-`;
+  Startup Name: ${data.startupName}
+  Problem: ${data.problem}
+  Solution: ${data.solution}
+  Industry: ${data.industry}
+  Target Audience: ${data.targetAudience}
+  Unique Selling Proposition: ${data.usp}
+
+  Guidelines:
+  - Avoid filler or vague responses like "N/A", "unknown", or placeholders.
+  - Use real assumptions based on typical industry behavior where applicable.
+
+  Return strictly valid JSON with these keys:
+  {
+    "startupName": "",
+    "problem": "",
+    "solution": "",
+    "audience": "",
+    "keyMetrics": "Quantifiable metrics to track growth or product performance",
+    "uniqueValueProposition": "",
+    "channels": "Marketing/sales/distribution channels",
+    "customerSegments": "Main user/customer groups",
+    "costStructure": "Primary cost drivers (people, infra, acquisition, etc.)",
+    "revenueStreams": "Main ways the startup will generate money",
+    "unfairAdvantage": "What makes the startup defensible or hard to copy"
+  }
+  `;
 
   try {
     const response = await axios.post(
