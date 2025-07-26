@@ -32,7 +32,7 @@ const generateRevenue = async (data) => {
 
   try {
     const response = await axios.post(
-      MODEL_URL + `?key=${GEMINI_API_KEY}`,
+      `${MODEL_URL}?key=${GEMINI_API_KEY}`,
       {
         contents: [{ parts: [{ text: prompt }] }]
       },
@@ -48,7 +48,22 @@ const generateRevenue = async (data) => {
     // Remove markdown formatting if present
     rawText = rawText.replace(/```json|```/g, '').trim();
 
-    return JSON.parse(rawText);
+    // ✅ Validate if JSON-looking structure and expected keys are present
+if (
+  !rawText.includes('{') ||
+  !rawText.includes('revenueStreams') ||
+  !rawText.includes('pricingStrategy') ||
+  !rawText.includes('expectedMonthlyRevenue') ||
+  !rawText.includes('growthOpportunities')
+) {
+  throw new Error("Unexpected or malformed response format from Gemini.");
+}
+
+console.log("🧠 Gemini raw response:", rawText);
+
+// Now safe to parse
+return JSON.parse(rawText);
+
   } catch (error) {
     console.error('Gemini Revenue Model Error:', error.response?.data || error.message);
     throw new Error('Failed to generate Revenue Model from Gemini');
