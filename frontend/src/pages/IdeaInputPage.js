@@ -33,7 +33,7 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
         problem: formData.problem,
         solution: formData.solution,
         targetAudience: formData.audience,
-        uniqueValueProposition: formData.usp
+        usp: formData.usp
       };
 
       console.log('Sending payload:', payload);

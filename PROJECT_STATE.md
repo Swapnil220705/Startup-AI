@@ -32,7 +32,7 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 | **Runtime** | Node.js (v22.14.0) |
 | **Backend Framework** | Express 5.1.0 |
 | **Backend Libraries** | Axios 1.10.0, Dotenv 17.0.0, Cors 2.8.5 |
-| **Backend Testing** | Zero-dependency Node.js test suite (`backend/tests/controllers.test.js`) |
+| **Backend Testing** | Zero-dependency Node.js test suite (`backend/tests/controllers.test.js`, `backend/tests/uspDataFlow.test.js`) |
 | **Frontend Framework** | React 19.1.0, React DOM 19.1.0 |
 | **Frontend Styling** | Tailwind CSS 3.4.3, PostCSS 8.5.6, Autoprefixer 10.4.21 |
 | **Frontend UI / Icons** | Lucide React 0.525.0, Framer Motion 12.19.3, react-hot-toast 2.5.2 |
@@ -54,8 +54,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ## 5. Known Issues (Deferred to Subsequent Chunks)
 
-1. **USP Payload Mismatch** (*Scheduled for Chunk 1.2*):
-   - `frontend/src/pages/IdeaInputPage.js` sends `uniqueValueProposition: formData.usp`, while `backend/models/*.js` expect `data.usp`. As a result, the USP resolves to `undefined` in prompt generation.
+1. **MVP localStorage Data Truncation** (*Scheduled for Chunk 1.3*):
+   - In `IdeaInputPage.js`, `localStorage.setItem('mvp', JSON.stringify(mvpRes.data.coreFeatures || mvpRes.data))` discards `technicalRequirements` and `launchTimeline` returned by Gemini, causing the MVP tab in `DashboardPage` to show placeholder content for technical stack and timeline.
 2. **Absence of Persistent Storage**:
    - Plans are only stored in the user's browser `localStorage`. Clearing cache or switching devices leads to permanent data loss.
 3. **CRA / Jest Test Configuration**:
@@ -68,36 +68,35 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 1 — Core Backend & Data Flow Fixes
-- **Current Chunk**: Chunk 1.1 — Fix Critical Backend Controller Argument Bugs
+- **Current Chunk**: Chunk 1.2 — Fix USP Payload Field Mismatch
 - **Status**: Completed
 
 ---
 
-## 7. Completed in Current Chunk (Chunk 1.1)
+## 7. Completed in Current Chunk (Chunk 1.2)
 
-- [x] Inspected all 4 problematic controllers (`competitorController.js`, `personaController.js`, `pitchController.js`, `revenueController.js`) and verified their models expect `(data)`.
-- [x] Fixed `competitorController.js`: Changed `generateCompetitors('/competitors', inputData)` to `generateCompetitors(inputData)`.
-- [x] Fixed `personaController.js`: Changed `generatePersonas('/personas', inputData)` to `generatePersonas(inputData)`.
-- [x] Fixed `pitchController.js`: Changed `generatePitch('/pitch', inputData)` to `generatePitch(inputData)`.
-- [x] Fixed `revenueController.js`: Changed `generateRevenue('/revenue', inputData)` to `generateRevenue(inputData)`.
-- [x] Added automated unit tests in `backend/tests/controllers.test.js` validating that each controller passes `req.body` directly without endpoint strings.
-- [x] Configured `"test": "node tests/controllers.test.js"` in `backend/package.json` with 0 external dependencies.
-- [x] Executed regression checks on backend startup, endpoint routing, and frontend build.
+- [x] Inspected form state, payload construction, and all 6 backend model prompt builders.
+- [x] Verified canonical field contract: frontend form state and backend models both natively use `usp`; only the request payload in `IdeaInputPage.js` incorrectly sent `uniqueValueProposition`.
+- [x] Corrected payload in `frontend/src/pages/IdeaInputPage.js`: replaced `uniqueValueProposition: formData.usp` with `usp: formData.usp`.
+- [x] Created focused data-flow and prompt-consumption test suite in `backend/tests/uspDataFlow.test.js`, proving that `data.usp` reaches all 6 model prompts without fallbacks or undefined values.
+- [x] Updated `backend/package.json` test script to run both controller and USP data-flow tests with zero external dependencies.
+- [x] Verified full regression pass: Chunk 1.1 controller tests passed, frontend production build compiled cleanly.
 
 ---
 
 ## 8. Next Chunk
 
-**Chunk 1.2 — Fix USP Payload Field Mismatch**
-- Resolve the key mismatch between frontend payload (`uniqueValueProposition`) and backend model expectations (`data.usp`).
+**Chunk 1.3 — Fix MVP localStorage Data Truncation**
+- Resolve truncation of `technicalRequirements` and `launchTimeline` in `localStorage` in `frontend/src/pages/IdeaInputPage.js` so full MVP generation data is preserved and displayed.
 
 ---
 
 ## 9. Future Roadmap
 
 - **Chunk 1.1**: Fix Critical Backend Controller Argument Bugs (Completed)
-- **Chunk 1.2**: Fix USP Payload Mismatch & Standardize Request Schemas
-- **Chunk 1.3**: Resolve Gemini API Access / Key Credentials & Add Structured Error Handling
+- **Chunk 1.2**: Fix USP Payload Mismatch & Standardize Request Schemas (Completed)
+- **Chunk 1.3**: Fix MVP localStorage Data Truncation
+- **Chunk 1.4**: Resolve Gemini API Access / Key Credentials & Add Structured Error Handling
 - **Phase 2**: Backend Database Persistence (User Accounts & Plan History)
 - **Phase 3**: Pitch Deck Export (PDF / PowerPoint) & Sharing
 - **Phase 4**: Production Hardening, Test Suite Modernization & CI/CD
@@ -107,8 +106,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `b531f3f chore: establish project baseline and upgrade Gemini model to gemini-3.8-flash`
-- **Chunk Milestone Commit**: da443f (Milestone Chunk 1.1)
+- **Pre-Chunk Commit**: `02a754fc6e83f13c2ebc201dd99ef317f67cb421` (Milestone Chunk 1.1)
+- **Chunk Milestone Commit**: b3cee2 (Milestone Chunk 1.2)
 
 ---
 
@@ -118,8 +117,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 |---|---|---|
 | **Backend Syntax** | PASS | All backend JS files checked with `node -c`. |
 | **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000. |
-| **Backend Unit Tests** | PASS | `npm test` in `backend` passed all 4 controller argument tests. |
-| **Live API Endpoint Routing** | PASS | Live POST requests reach the controllers and invoke models with data. |
+| **Backend Unit Tests** | PASS | `npm test` passed all controller argument and USP data-flow tests. |
+| **USP Prompt Verification** | PASS | Tested all 6 models in `uspDataFlow.test.js`: prompt strings contain `data.usp` without undefined/fallback. |
 | **Frontend Production Build** | PASS | `npm run build` succeeds cleanly. |
 | **Gemini Live Generation** | BLOCKED (429/503) | Google upstream rate limits (5 RPM free tier) and model demand spikes. |
 
