@@ -32,6 +32,7 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 | **Runtime** | Node.js (v22.14.0) |
 | **Backend Framework** | Express 5.1.0 |
 | **Backend Libraries** | Axios 1.10.0, Dotenv 17.0.0, Cors 2.8.5 |
+| **Backend Testing** | Zero-dependency Node.js test suite (`backend/tests/controllers.test.js`) |
 | **Frontend Framework** | React 19.1.0, React DOM 19.1.0 |
 | **Frontend Styling** | Tailwind CSS 3.4.3, PostCSS 8.5.6, Autoprefixer 10.4.21 |
 | **Frontend UI / Icons** | Lucide React 0.525.0, Framer Motion 12.19.3, react-hot-toast 2.5.2 |
@@ -53,51 +54,48 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ## 5. Known Issues (Deferred to Subsequent Chunks)
 
-1. **Backend Controller Argument Bugs** (*Scheduled for Chunk 1.1*):
-   - In `competitorController.js`, `personaController.js`, `pitchController.js`, and `revenueController.js`, controllers call `generate*(endpoint, inputData)` with two arguments instead of one. As a result, `data` in each model evaluates to the endpoint string rather than the input object.
-2. **USP Payload Mismatch**:
-   - `frontend/src/pages/IdeaInputPage.js` sends `uniqueValueProposition: formData.usp`, while `backend/models/*.js` expect `data.usp`. As a result, the USP resolves to `undefined` in the prompts.
-3. **Absence of Persistent Storage**:
+1. **USP Payload Mismatch** (*Scheduled for Chunk 1.2*):
+   - `frontend/src/pages/IdeaInputPage.js` sends `uniqueValueProposition: formData.usp`, while `backend/models/*.js` expect `data.usp`. As a result, the USP resolves to `undefined` in prompt generation.
+2. **Absence of Persistent Storage**:
    - Plans are only stored in the user's browser `localStorage`. Clearing cache or switching devices leads to permanent data loss.
-4. **CRA / Jest Test Configuration**:
+3. **CRA / Jest Test Configuration**:
    - Default CRA test `App.test.js` fails due to Jest ESM parsing on `axios` inside `node_modules`.
-5. **Google Cloud Project Access Block (403)**:
-   - The current API key in `backend/.env` encounters `403 Forbidden: "Your project has been denied access. Please contact support."` on `generateContent` across all models due to an account/project-level Google Cloud hold. Token counting (`countTokens`) and model queries (`listModels`) function normally.
+4. **Upstream Gemini Free-Tier Quota & Demand Restrictions (429/503)**:
+   - When generating all 6 modules simultaneously, the free-tier quota (5 requests per minute) on `gemini-3.8-flash` triggers `429 RESOURCE_EXHAUSTED` or temporary high demand `503 UNAVAILABLE` from Google's servers.
 
 ---
 
 ## 6. Current Status
 
-- **Phase**: Phase 0 — Baseline & Foundation
-- **Current Chunk**: Chunk 0.1 — Baseline Audit + Project Documentation + Gemini Model Upgrade
+- **Phase**: Phase 1 — Core Backend & Data Flow Fixes
+- **Current Chunk**: Chunk 1.1 — Fix Critical Backend Controller Argument Bugs
 - **Status**: Completed
 
 ---
 
-## 7. Completed in Current Chunk (Chunk 0.1)
+## 7. Completed in Current Chunk (Chunk 1.1)
 
-- [x] Performed exhaustive codebase inspection across frontend, backend, configuration, and git history.
-- [x] Audited Gemini configuration and identified active REST endpoints across all 6 backend modules.
-- [x] Verified Google API model availability: confirmed `gemini-2.5-flash` deprecation notice from Google and confirmed `gemini-3.8-flash` availability.
-- [x] Upgraded model configuration from `gemini-2.5-flash` to `gemini-3.8-flash` across all 6 backend model files.
-- [x] Created `ARCHITECTURE.md` detailing system architecture, directory structure, and request flow.
-- [x] Created `MODELS.md` documenting active model specs, generation settings, and migration history.
-- [x] Created `PROJECT_STATE.md` as the single source of truth for future AI-assisted development.
-- [x] Verified frontend build passes (`npm run build` exits code 0).
-- [x] Verified backend server starts cleanly (`node index.js` on port 4000).
+- [x] Inspected all 4 problematic controllers (`competitorController.js`, `personaController.js`, `pitchController.js`, `revenueController.js`) and verified their models expect `(data)`.
+- [x] Fixed `competitorController.js`: Changed `generateCompetitors('/competitors', inputData)` to `generateCompetitors(inputData)`.
+- [x] Fixed `personaController.js`: Changed `generatePersonas('/personas', inputData)` to `generatePersonas(inputData)`.
+- [x] Fixed `pitchController.js`: Changed `generatePitch('/pitch', inputData)` to `generatePitch(inputData)`.
+- [x] Fixed `revenueController.js`: Changed `generateRevenue('/revenue', inputData)` to `generateRevenue(inputData)`.
+- [x] Added automated unit tests in `backend/tests/controllers.test.js` validating that each controller passes `req.body` directly without endpoint strings.
+- [x] Configured `"test": "node tests/controllers.test.js"` in `backend/package.json` with 0 external dependencies.
+- [x] Executed regression checks on backend startup, endpoint routing, and frontend build.
 
 ---
 
 ## 8. Next Chunk
 
-**Chunk 1.1 — Fix Critical Backend Controller Argument Bugs**
-- Align arguments in `competitorController.js`, `personaController.js`, `pitchController.js`, and `revenueController.js` to pass `inputData` directly to models.
+**Chunk 1.2 — Fix USP Payload Field Mismatch**
+- Resolve the key mismatch between frontend payload (`uniqueValueProposition`) and backend model expectations (`data.usp`).
 
 ---
 
 ## 9. Future Roadmap
 
-- **Chunk 1.1**: Fix Critical Backend Controller Argument Bugs
+- **Chunk 1.1**: Fix Critical Backend Controller Argument Bugs (Completed)
 - **Chunk 1.2**: Fix USP Payload Mismatch & Standardize Request Schemas
 - **Chunk 1.3**: Resolve Gemini API Access / Key Credentials & Add Structured Error Handling
 - **Phase 2**: Backend Database Persistence (User Accounts & Plan History)
@@ -109,8 +107,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `960e545 update: refined UI and optimized Gemini model prompts`
-- **Chunk Milestone Commit**: `2b40bcd` (Milestone Chunk 0.1)
+- **Pre-Chunk Commit**: `b531f3f chore: establish project baseline and upgrade Gemini model to gemini-3.8-flash`
+- **Chunk Milestone Commit**: da443f (Milestone Chunk 1.1)
 
 ---
 
@@ -118,13 +116,12 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 | Verification Check | Result | Details |
 |---|---|---|
-| **Backend Syntax** | PASS | Checked syntax on all 6 modified model files with `node -c`. |
-| **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000 with environment variables loaded. |
-| **Frontend Build** | PASS | `npm run build` succeeds, generating production bundle. |
-| **Frontend Tests** | FAIL | Default `App.test.js` failed due to CRA Jest ESM parsing issue with Axios. Unrelated bug deferred. |
-| **Gemini Model Query** | PASS | `gemini-3.8-flash` verified available on `https://generativelanguage.googleapis.com/v1/models`. |
-| **Gemini Token Count** | PASS | `countTokens` on `gemini-3.8-flash` succeeded with HTTP 200. |
-| **Gemini Generation** | BLOCKED (403) | Key project encounters `403 Forbidden: Your project has been denied access.` Configured `gemini-3.8-flash` per user directive. |
+| **Backend Syntax** | PASS | All backend JS files checked with `node -c`. |
+| **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000. |
+| **Backend Unit Tests** | PASS | `npm test` in `backend` passed all 4 controller argument tests. |
+| **Live API Endpoint Routing** | PASS | Live POST requests reach the controllers and invoke models with data. |
+| **Frontend Production Build** | PASS | `npm run build` succeeds cleanly. |
+| **Gemini Live Generation** | BLOCKED (429/503) | Google upstream rate limits (5 RPM free tier) and model demand spikes. |
 
 ---
 

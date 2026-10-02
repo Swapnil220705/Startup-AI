@@ -3,7 +3,7 @@ const { generateCompetitors } = require('../models/competitorsModel');
 const generateCompetitorList = async (req, res) => {
   try {
     const inputData = req.body;
-    const aiResponse = await generateCompetitors('/competitors', inputData); // or scraping logic here
+    const aiResponse = await generateCompetitors(inputData);
     res.status(200).json(aiResponse);
   } catch (error) {
     console.error('Competitor Error:', error.message);
