@@ -37,7 +37,10 @@ const generateLeanCanvas = async (data) => {
     return parseGeminiJson(rawText);
   } catch (error) {
     console.error('Gemini Lean Canvas Error:', error.response?.data || error.message);
-    throw new Error('Failed to generate Lean Canvas from Gemini');
+    const modelError = new Error('Failed to generate Lean Canvas from Gemini');
+    modelError.status = error.response?.status || (error.code ? 503 : 500);
+    modelError.code = error.code;
+    throw modelError;
   }
 };
 

@@ -31,7 +31,10 @@ const generatePitch = async (data) => {
     return parseGeminiJson(rawText);
   } catch (error) {
     console.error('Gemini Pitch Model Error:', error.response?.data || error.message);
-    throw new Error('Failed to generate Elevator Pitch from Gemini');
+    const modelError = new Error('Failed to generate Elevator Pitch from Gemini');
+    modelError.status = error.response?.status || (error.code ? 503 : 500);
+    modelError.code = error.code;
+    throw modelError;
   }
 };
 

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "node tests/controllers.test.js && node tests/uspDataFlow.test.js && node tests/mvpStorage.test.js && node tests/frontendRoutes.test.js && node tests/e2eGenerationFlow.test.js && node tests/jsonParser.test.js && node tests/geminiClient.test.js"
+    "test": "node tests/controllers.test.js && node tests/uspDataFlow.test.js && node tests/mvpStorage.test.js && node tests/frontendRoutes.test.js && node tests/e2eGenerationFlow.test.js && node tests/jsonParser.test.js && node tests/geminiClient.test.js && node tests/partialGeneration.test.js"
   },
   "keywords": [],
   "author": "",

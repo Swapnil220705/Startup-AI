@@ -9,7 +9,8 @@ import {
   Download,
   Sparkles,
   TrendingUp,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-react';
 import Header from '../components/Header';
 import {
@@ -27,6 +28,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isVisible, setIsVisible] = useState(false);
+  const [generationErrors, setGenerationErrors] = useState(null);
 
   useEffect(() => {
     try {
@@ -40,6 +42,8 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
       const pitch = JSON.parse(localStorage.getItem('pitch') || 'null');
       const personas = JSON.parse(localStorage.getItem('personas') || 'null');
       const competitors = JSON.parse(localStorage.getItem('competitors') || 'null');
+      const genErrors = JSON.parse(localStorage.getItem('generationErrors') || 'null');
+      setGenerationErrors(genErrors);
 
       console.log('Dashboard data loaded:', {
         formData,
@@ -91,10 +95,10 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
     const completedTabs = [];
     if (data?.overview?.name) completedTabs.push('overview');
     if (data?.leanCanvas && Object.keys(data.leanCanvas).length > 0) completedTabs.push('canvas');
-    if (data?.mvp) completedTabs.push('mvp');
-    if (data?.revenue) completedTabs.push('revenue');
-    if (data?.competitors) completedTabs.push('competitors');
-    if (data?.personas) completedTabs.push('personas');
+    if (data?.mvp && (data.mvp.startupName || data.mvp.technicalRequirements || data.mvp.launchTimeline || (Array.isArray(data.mvp.coreFeatures) && data.mvp.coreFeatures.length > 0))) completedTabs.push('mvp');
+    if (data?.revenue && Array.isArray(data.revenue) && data.revenue.length > 0) completedTabs.push('revenue');
+    if (data?.competitors && Array.isArray(data.competitors) && data.competitors.length > 0) completedTabs.push('competitors');
+    if (data?.personas && Array.isArray(data.personas) && data.personas.length > 0) completedTabs.push('personas');
     
     return completedTabs;
   };
@@ -208,7 +212,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
                       <CheckCircle2 className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <div className="text-2xl font-bold">95%</div>
+                      <div className="text-2xl font-bold">{Math.round((completedTabs.length / 6) * 100)}%</div>
                       <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Complete</div>
                     </div>
                   </div>
@@ -292,6 +296,47 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
           {/* Enhanced Main Content */}
           <div className="flex-1">
             <div className={`transition-all duration-500 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
+              {/* Partial Generation Notification Banner */}
+              {generationErrors && generationErrors.failedModules?.length > 0 && (
+                <div className={`mb-8 p-6 rounded-3xl border ${isDark ? 'bg-amber-950/30 border-amber-800 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-900'} shadow-lg backdrop-blur-sm`}>
+                  <div className="flex items-start space-x-4">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <AlertTriangle className="w-6 h-6 text-amber-500" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <h3 className="font-bold text-lg">Your startup plan was partially generated</h3>
+                        <button 
+                          onClick={() => {
+                            localStorage.removeItem('generationErrors');
+                            setGenerationErrors(null);
+                          }}
+                          className="text-xs opacity-60 hover:opacity-100 font-semibold px-2 py-1 rounded hover:bg-amber-500/10 transition-colors"
+                          aria-label="Dismiss notice"
+                        >
+                          ✕ Dismiss
+                        </button>
+                      </div>
+                      <p className={`text-sm mb-4 ${isDark ? 'text-amber-300/80' : 'text-amber-800'}`}>
+                        Some modules could not be generated due to high AI service demand. You can explore all available sections below or retry generating the full plan anytime.
+                      </p>
+                      <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                        {generationErrors.successfulModules?.length > 0 && (
+                          <div className={`p-3 rounded-xl ${isDark ? 'bg-green-950/40 border border-green-800/50 text-green-300' : 'bg-green-50 border border-green-200 text-green-800'}`}>
+                            <span className="font-semibold block mb-1">✓ Available Sections:</span>
+                            <span className="text-xs">{generationErrors.successfulModules.join(', ')}</span>
+                          </div>
+                        )}
+                        <div className={`p-3 rounded-xl ${isDark ? 'bg-red-950/40 border border-red-800/50 text-red-300' : 'bg-red-50 border border-red-200 text-red-800'}`}>
+                          <span className="font-semibold block mb-1">✕ Unavailable Sections:</span>
+                          <span className="text-xs">{generationErrors.failedModules.join(', ')}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {activeTab === 'overview' && <OverviewTab data={data} isDark={isDark} />}
               {activeTab === 'canvas' && <LeanCanvasTab data={data} isDark={isDark} />}
               {activeTab === 'mvp' && <MVPTab data={data} isDark={isDark} />}

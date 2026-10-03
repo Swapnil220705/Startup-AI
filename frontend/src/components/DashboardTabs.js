@@ -238,6 +238,10 @@ export const LeanCanvasTab = ({ data, isDark }) => {
 export const MVPTab = ({ data, isDark }) => {
   const mvpData = data.mvp;
   const coreFeatures = mvpData?.coreFeatures || (Array.isArray(mvpData) ? mvpData : []);
+  const hasMvpData = Boolean(
+    mvpData &&
+    (mvpData.startupName || mvpData.technicalRequirements || mvpData.launchTimeline || (Array.isArray(coreFeatures) && coreFeatures.length > 0))
+  );
   
   return (
     <div className="space-y-8">
@@ -258,11 +262,22 @@ export const MVPTab = ({ data, isDark }) => {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-8">
-        {/* MVP Overview */}
-        <div className="lg:col-span-2">
-          <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg`}>
-            {mvpData?.startupName && (
+      {!hasMvpData ? (
+        <div className={`p-8 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg text-center`}>
+          <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Rocket className="w-8 h-8 text-gray-400" />
+          </div>
+          <h3 className="text-xl font-semibold mb-2">No MVP Data Available</h3>
+          <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-6`}>
+            No MVP plan data available. This module was not generated.
+          </p>
+        </div>
+      ) : (
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* MVP Overview */}
+          <div className="lg:col-span-2">
+            <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg`}>
+              {mvpData?.startupName && (
               <div className="flex items-center space-x-3 mb-6">
                 <div className="w-10 h-10 bg-gradient-to-r from-yellow-500 to-orange-600 rounded-xl flex items-center justify-center">
                   <Building className="w-5 h-5 text-white" />
@@ -373,6 +388,7 @@ export const MVPTab = ({ data, isDark }) => {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

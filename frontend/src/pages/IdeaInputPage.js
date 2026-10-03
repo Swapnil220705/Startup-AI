@@ -27,6 +27,18 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
     setIsLoading(true);
 
     try {
+      // 1. Purge stale generation data from prior runs to prevent stale state pollution
+      const GENERATION_STORAGE_KEYS = [
+        'leanCanvas',
+        'mvp',
+        'revenue',
+        'pitch',
+        'personas',
+        'competitors',
+        'generationErrors'
+      ];
+      GENERATION_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
+
       const payload = {
         startupName: formData.name,
         industry: formData.domain,
@@ -38,60 +50,90 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
 
       console.log('Sending payload:', payload);
 
-      // Call all backend endpoints in parallel
-      const [
-        leanCanvasRes,
-        mvpRes,
-        revenueRes,
-        pitchRes,
-        personaRes,
-        competitorRes
-      ] = await Promise.all([
-        axios.post('http://localhost:4000/api/lean-canvas', payload),
-        axios.post('http://localhost:4000/api/mvp', payload),
-        axios.post('http://localhost:4000/api/revenue', payload),
-        axios.post('http://localhost:4000/api/pitch', payload),
-        axios.post('http://localhost:4000/api/personas', payload),
-        axios.post('http://localhost:4000/api/competitors', payload)
-      ]);
+      const endpoints = [
+        { key: 'leanCanvas', label: 'Lean Canvas', url: 'http://localhost:4000/api/lean-canvas' },
+        { key: 'mvp', label: 'MVP Plan', url: 'http://localhost:4000/api/mvp' },
+        { key: 'revenue', label: 'Revenue Model', url: 'http://localhost:4000/api/revenue' },
+        { key: 'pitch', label: 'Pitch Deck', url: 'http://localhost:4000/api/pitch' },
+        { key: 'personas', label: 'User Personas', url: 'http://localhost:4000/api/personas' },
+        { key: 'competitors', label: 'Competitor Analysis', url: 'http://localhost:4000/api/competitors' }
+      ];
 
-      console.log('API Responses:', {
-        leanCanvas: leanCanvasRes.data,
-        mvp: mvpRes.data,
-        revenue: revenueRes.data,
-        pitch: pitchRes.data,
-        personas: personaRes.data,
-        competitors: competitorRes.data
+      // Call all backend endpoints in parallel using Promise.allSettled
+      const settledResults = await Promise.allSettled(
+        endpoints.map(ep => axios.post(ep.url, payload))
+      );
+
+      const successfulModules = [];
+      const failedModules = [];
+
+      settledResults.forEach((result, idx) => {
+        const ep = endpoints[idx];
+        if (result.status === 'fulfilled' && result.value?.data) {
+          const resData = result.value.data;
+          successfulModules.push(ep.label);
+
+          if (ep.key === 'leanCanvas') {
+            localStorage.setItem('leanCanvas', JSON.stringify(resData));
+          } else if (ep.key === 'mvp') {
+            const mvpRes = result.value;
+            localStorage.setItem('mvp', JSON.stringify(mvpRes.data));
+          } else if (ep.key === 'revenue') {
+            localStorage.setItem('revenue', JSON.stringify([
+              {
+                model: "Primary Revenue Stream",
+                description: resData.revenueStreams,
+                projection: resData.expectedMonthlyRevenue
+              },
+              {
+                model: "Pricing Strategy",
+                description: resData.pricingStrategy,
+                projection: "Growth Phase"
+              }
+            ]));
+          } else if (ep.key === 'pitch') {
+            localStorage.setItem('pitch', JSON.stringify(resData));
+          } else if (ep.key === 'personas') {
+            localStorage.setItem('personas', JSON.stringify(resData.personas || resData));
+          } else if (ep.key === 'competitors') {
+            localStorage.setItem('competitors', JSON.stringify(resData.competitors || resData));
+          }
+        } else {
+          const errMessage = result.reason?.response?.data?.error?.message ||
+            result.reason?.response?.data?.error ||
+            result.reason?.message ||
+            'Request failed';
+          failedModules.push({ label: ep.label, error: errMessage });
+          console.warn(`[Generation] Module ${ep.label} failed:`, errMessage);
+        }
       });
 
-      // Store each response individually with the keys that DashboardPage expects
-      localStorage.setItem('leanCanvas', JSON.stringify(leanCanvasRes.data));
-      localStorage.setItem('mvp', JSON.stringify(mvpRes.data));
-      localStorage.setItem('revenue', JSON.stringify([
-        {
-          model: "Primary Revenue Stream",
-          description: revenueRes.data.revenueStreams,
-          projection: revenueRes.data.expectedMonthlyRevenue
-        },
-        {
-          model: "Pricing Strategy", 
-          description: revenueRes.data.pricingStrategy,
-          projection: "Growth Phase"
-        }
-      ]));
-      localStorage.setItem('pitch', JSON.stringify(pitchRes.data));
-      localStorage.setItem('personas', JSON.stringify(personaRes.data.personas || personaRes.data));
-      localStorage.setItem('competitors', JSON.stringify(competitorRes.data.competitors || competitorRes.data));
-      
-      // Also store form data for overview section
+      // Case A: Complete generation failure (0/6 succeeded)
+      if (successfulModules.length === 0) {
+        setIsLoading(false);
+        const detailedErrors = failedModules.map(m => `• ${m.label}: ${m.error}`).join('\n');
+        alert(`Failed to generate business plan. All AI generation requests failed:\n\n${detailedErrors}\n\nPlease check your server or connection and try again.`);
+        return;
+      }
+
+      // Always store formData when at least one module generated successfully
       localStorage.setItem('formData', JSON.stringify(formData));
+
+      // Case B: Partial generation (1 to 5 succeeded)
+      if (failedModules.length > 0) {
+        localStorage.setItem('generationErrors', JSON.stringify({
+          failedModules: failedModules.map(m => m.label),
+          successfulModules: successfulModules
+        }));
+      } else {
+        localStorage.removeItem('generationErrors');
+      }
 
       setIsLoading(false);
       navigate('/dashboard');
     } catch (error) {
       console.error('API Error:', error);
-      console.error('Error details:', error.response?.data);
-      alert(`Failed to generate business plan: ${error.response?.data?.message || error.message}`);
+      alert(`Failed to generate business plan: ${error.message}`);
       setIsLoading(false);
     }
   };
