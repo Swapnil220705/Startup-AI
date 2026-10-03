@@ -135,7 +135,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
               It looks like you haven't created a business plan yet. Let's get started!
             </p>
             <button 
-              onClick={() => navigate('/input')}
+              onClick={() => navigate('/start')}
               className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-4 rounded-2xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
             >
               Generate New Plan

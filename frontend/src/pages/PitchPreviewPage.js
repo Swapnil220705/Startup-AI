@@ -69,7 +69,7 @@ const PitchPreviewPage = ({ navigate, isDark, toggleTheme }) => {
         <div className="p-10 text-center">
           <p>No pitch data found. Please go back and generate a new business plan.</p>
           <button 
-            onClick={() => navigate('/input')}
+            onClick={() => navigate('/start')}
             className="mt-4 bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700"
           >
             Generate New Plan

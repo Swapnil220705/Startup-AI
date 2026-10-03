@@ -54,13 +54,11 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ## 5. Known Issues (Deferred to Subsequent Chunks)
 
-1. **Frontend Routing Inconsistencies** (*Scheduled for Chunk 1.4*):
-   - Navigation links across components (e.g. Header, buttons) inconsistently use `/input` vs `/start`, `/canvas` vs `/dashboard`, and custom pushState vs standard routing patterns.
-2. **Absence of Persistent Storage**:
-   - Plans are only stored in the user's browser `localStorage`. Clearing cache or switching devices leads to permanent data loss.
-3. **CRA / Jest Test Configuration**:
+1. **Absence of Persistent Storage**:
+   - Plans are only stored in the user's browser `localStorage`. Clearing cache or switching devices leads to permanent data loss (scheduled for Phase 2).
+2. **CRA / Jest Test Configuration**:
    - Default CRA test `App.test.js` fails due to Jest ESM parsing on `axios` inside `node_modules`.
-4. **Upstream Gemini Free-Tier Quota & Demand Restrictions (429/503)**:
+3. **Upstream Gemini Free-Tier Quota & Demand Restrictions (429/503)**:
    - When generating all 6 modules simultaneously, the free-tier quota (5 requests per minute) on `gemini-3.8-flash` triggers `429 RESOURCE_EXHAUSTED` or temporary high demand `503 UNAVAILABLE` from Google's servers.
 
 ---
@@ -68,28 +66,41 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 1 — Core Backend & Data Flow Fixes
-- **Current Chunk**: Chunk 1.3 — Fix MVP localStorage Data Truncation
+- **Current Chunk**: Chunk 1.4 — Fix Frontend Routing Inconsistencies
 - **Status**: Completed
 
 ---
 
-## 7. Completed in Current Chunk (Chunk 1.3)
+## 7. Completed in Current Chunk (Chunk 1.4)
 
-- [x] Inspected backend MVP response contract in `backend/models/mvpGenerator.js` and `backend/controllers/mvpController.js`: response object contains `startupName`, `coreFeatures` (array), `technicalRequirements` (string), and `launchTimeline` (string).
-- [x] Inspected frontend storage and consumers in `frontend/src/pages/IdeaInputPage.js`, `frontend/src/pages/DashboardPage.js`, `frontend/src/components/DashboardTabs.js` (`MVPTab`), and `frontend/src/pages/PitchPreviewPage.js`.
-- [x] Identified root cause bug: `IdeaInputPage.js` line 69 stored `JSON.stringify(mvpRes.data.coreFeatures || mvpRes.data)`, truncating the response to only `coreFeatures` and discarding `technicalRequirements`, `launchTimeline`, and `startupName`.
-- [x] Applied targeted fix in `frontend/src/pages/IdeaInputPage.js`: replaced storage expression with `localStorage.setItem('mvp', JSON.stringify(mvpRes.data))`.
-- [x] Verified backward compatibility: confirmed `MVPTab` and `PitchPreviewPage` safely handle both the complete MVP object and legacy array fallback via `(Array.isArray(...) ? ... : [])`.
-- [x] Created focused test suite in `backend/tests/mvpStorage.test.js`: verifies static persistence in `IdeaInputPage.js`, verifies complete MVP preservation in `localStorage`, reproduces buggy truncation behavior, tests `MVPTab` and `PitchPreviewPage` readers, and verifies backward compatibility with legacy array storage.
-- [x] Updated `backend/package.json` test script to execute all test suites: controller tests, USP data-flow tests, and MVP persistence tests with zero external dependencies.
-- [x] Verified full regression pass: backend syntax check (`node -c`), all backend unit tests pass, and frontend production build compiles cleanly.
+- [x] Inspected routing implementation in `frontend/src/App.js` and `frontend/src/utils/Router.js`: verified the 4 canonical registered routes:
+  - `/` → `LandingPage`
+  - `/start` → `IdeaInputPage`
+  - `/dashboard` → `DashboardPage`
+  - `/pitch-preview` → `PitchPreviewPage`
+- [x] Audited all 15 active `navigate(...)` calls across all components and pages in `frontend/src/`.
+- [x] Corrected stale route `/input` → `/start` in `frontend/src/pages/DashboardPage.js` (empty state "Generate New Plan" CTA).
+- [x] Corrected stale route `/input` → `/start` in `frontend/src/pages/PitchPreviewPage.js` (empty state "Generate New Plan" CTA).
+- [x] Aligned `frontend/src/components/Header.js`:
+  - Activated desktop navigation links for `/dashboard` and `/pitch-preview` (allowing navigation between Dashboard and Pitch Preview).
+  - Removed dead link to `/my-plans` from mobile navigation (aligning with desktop where history feature is deferred to Phase 2).
+- [x] Verified `/canvas` is an internal tab identifier in `DashboardPage.js` (`activeTab === 'canvas'`), not an invalid router path.
+- [x] Created comprehensive test suite in `backend/tests/frontendRoutes.test.js`:
+  - Discovers canonical routes dynamically from `App.js`.
+  - Scans all frontend files for active `navigate()` calls and asserts 100% of targets belong to the canonical route set.
+  - Verifies zero references to invalid paths (`/input`, `/canvas`, `/my-plans`).
+  - Verifies reachability of all registered canonical routes.
+  - Verifies `Router.js` history simulation (`pushState`, `popstate`).
+  - Verifies empty-state buttons and header navigation.
+- [x] Updated `backend/package.json` test script to include `frontendRoutes.test.js`.
+- [x] Verified full regression pass: backend syntax clean, all 4 backend test suites pass (controllers, USP, MVP storage, frontend routing), and frontend production build compiles cleanly.
 
 ---
 
 ## 8. Next Chunk
 
-**Chunk 1.4 — Fix Frontend Routing Inconsistencies**
-- Resolve routing inconsistencies and route mismatches across navigation links, action buttons, and pages in the frontend.
+**Chunk 1.5 — End-to-End Generation Testing**
+- Validate end-to-end business plan generation flow with structured error handling and resilient retry/rate-limit recovery.
 
 ---
 
@@ -98,8 +109,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 - **Chunk 1.1**: Fix Critical Backend Controller Argument Bugs (Completed)
 - **Chunk 1.2**: Fix USP Payload Mismatch & Standardize Request Schemas (Completed)
 - **Chunk 1.3**: Fix MVP localStorage Data Truncation (Completed)
-- **Chunk 1.4**: Fix Frontend Routing Inconsistencies
-- **Chunk 1.5**: Resolve Gemini API Access / Key Credentials & Add Structured Error Handling
+- **Chunk 1.4**: Fix Frontend Routing Inconsistencies (Completed)
+- **Chunk 1.5**: End-to-End Generation Testing
 - **Phase 2**: Backend Database Persistence (User Accounts & Plan History)
 - **Phase 3**: Pitch Deck Export (PDF / PowerPoint) & Sharing
 - **Phase 4**: Production Hardening, Test Suite Modernization & CI/CD
@@ -109,8 +120,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `b22a6f767e24fac4fac70b815fa8e59c52370716` (Milestone Chunk 1.2)
-- **Chunk Milestone Commit**: `4afe782` (Milestone Chunk 1.3)
+- **Pre-Chunk Commit**: `5a06ab5` (Milestone Chunk 1.3)
+- **Chunk Milestone Commit**: `6c4007c` (Milestone Chunk 1.4)
 
 ---
 
@@ -120,10 +131,11 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 |---|---|---|
 | **Backend Syntax** | PASS | All backend JS files checked with `node -c`. |
 | **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000. |
-| **Backend Unit Tests** | PASS | `npm test` passed controller argument, USP data-flow, and MVP storage persistence tests. |
+| **Backend Unit Tests** | PASS | `npm test` passed controller argument, USP data-flow, MVP storage persistence, and frontend routing tests. |
 | **USP Prompt Verification** | PASS | Tested all 6 models in `uspDataFlow.test.js`: prompt strings contain `data.usp` without undefined/fallback. |
 | **MVP Storage Verification** | PASS | `backend/tests/mvpStorage.test.js`: verifies complete MVP object retention, reproduces regression, and tests consumers + legacy fallback. |
-| **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.c70162d1.js`). |
+| **Frontend Routing Verification** | PASS | `backend/tests/frontendRoutes.test.js`: 100% of active `navigate()` calls map to canonical routes; no stale `/input`, `/canvas`, or `/my-plans` references. |
+| **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.7412d32b.js`). |
 | **Gemini Live Generation** | BLOCKED (429/503) | Google upstream rate limits (5 RPM free tier) and model demand spikes. |
 
 ---

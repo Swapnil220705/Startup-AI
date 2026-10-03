@@ -19,15 +19,12 @@ const Header = ({ navigate, isDark, toggleTheme, showNavigation = false }) => {
             
             {showNavigation && (
               <nav className="hidden md:flex space-x-6 ml-8">
-                {/* <button onClick={() => navigate('/dashboard')} className={`hover:text-indigo-600 transition-colors ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                <button onClick={() => navigate('/dashboard')} className={`hover:text-indigo-600 transition-colors ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                   Dashboard
                 </button>
                 <button onClick={() => navigate('/pitch-preview')} className={`hover:text-indigo-600 transition-colors ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                   Pitch Deck
                 </button>
-                <button onClick={() => navigate('/my-plans')} className={`hover:text-indigo-600 transition-colors ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                  My Plans
-                </button> */}
               </nav>
             )}
           </div>
@@ -69,9 +66,6 @@ const Header = ({ navigate, isDark, toggleTheme, showNavigation = false }) => {
               </button>
               <button onClick={() => { navigate('/pitch-preview'); setIsMenuOpen(false); }} className="text-left py-2 hover:text-indigo-600 transition-colors">
                 Pitch Deck
-              </button>
-              <button onClick={() => { navigate('/my-plans'); setIsMenuOpen(false); }} className="text-left py-2 hover:text-indigo-600 transition-colors">
-                My Plans
               </button>
             </nav>
           </div>
