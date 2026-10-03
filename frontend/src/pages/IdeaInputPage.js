@@ -66,7 +66,7 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
 
       // Store each response individually with the keys that DashboardPage expects
       localStorage.setItem('leanCanvas', JSON.stringify(leanCanvasRes.data));
-      localStorage.setItem('mvp', JSON.stringify(mvpRes.data.coreFeatures || mvpRes.data));
+      localStorage.setItem('mvp', JSON.stringify(mvpRes.data));
       localStorage.setItem('revenue', JSON.stringify([
         {
           model: "Primary Revenue Stream",

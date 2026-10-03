@@ -54,8 +54,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ## 5. Known Issues (Deferred to Subsequent Chunks)
 
-1. **MVP localStorage Data Truncation** (*Scheduled for Chunk 1.3*):
-   - In `IdeaInputPage.js`, `localStorage.setItem('mvp', JSON.stringify(mvpRes.data.coreFeatures || mvpRes.data))` discards `technicalRequirements` and `launchTimeline` returned by Gemini, causing the MVP tab in `DashboardPage` to show placeholder content for technical stack and timeline.
+1. **Frontend Routing Inconsistencies** (*Scheduled for Chunk 1.4*):
+   - Navigation links across components (e.g. Header, buttons) inconsistently use `/input` vs `/start`, `/canvas` vs `/dashboard`, and custom pushState vs standard routing patterns.
 2. **Absence of Persistent Storage**:
    - Plans are only stored in the user's browser `localStorage`. Clearing cache or switching devices leads to permanent data loss.
 3. **CRA / Jest Test Configuration**:
@@ -68,26 +68,28 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 1 — Core Backend & Data Flow Fixes
-- **Current Chunk**: Chunk 1.2 — Fix USP Payload Field Mismatch
+- **Current Chunk**: Chunk 1.3 — Fix MVP localStorage Data Truncation
 - **Status**: Completed
 
 ---
 
-## 7. Completed in Current Chunk (Chunk 1.2)
+## 7. Completed in Current Chunk (Chunk 1.3)
 
-- [x] Inspected form state, payload construction, and all 6 backend model prompt builders.
-- [x] Verified canonical field contract: frontend form state and backend models both natively use `usp`; only the request payload in `IdeaInputPage.js` incorrectly sent `uniqueValueProposition`.
-- [x] Corrected payload in `frontend/src/pages/IdeaInputPage.js`: replaced `uniqueValueProposition: formData.usp` with `usp: formData.usp`.
-- [x] Created focused data-flow and prompt-consumption test suite in `backend/tests/uspDataFlow.test.js`, proving that `data.usp` reaches all 6 model prompts without fallbacks or undefined values.
-- [x] Updated `backend/package.json` test script to run both controller and USP data-flow tests with zero external dependencies.
-- [x] Verified full regression pass: Chunk 1.1 controller tests passed, frontend production build compiled cleanly.
+- [x] Inspected backend MVP response contract in `backend/models/mvpGenerator.js` and `backend/controllers/mvpController.js`: response object contains `startupName`, `coreFeatures` (array), `technicalRequirements` (string), and `launchTimeline` (string).
+- [x] Inspected frontend storage and consumers in `frontend/src/pages/IdeaInputPage.js`, `frontend/src/pages/DashboardPage.js`, `frontend/src/components/DashboardTabs.js` (`MVPTab`), and `frontend/src/pages/PitchPreviewPage.js`.
+- [x] Identified root cause bug: `IdeaInputPage.js` line 69 stored `JSON.stringify(mvpRes.data.coreFeatures || mvpRes.data)`, truncating the response to only `coreFeatures` and discarding `technicalRequirements`, `launchTimeline`, and `startupName`.
+- [x] Applied targeted fix in `frontend/src/pages/IdeaInputPage.js`: replaced storage expression with `localStorage.setItem('mvp', JSON.stringify(mvpRes.data))`.
+- [x] Verified backward compatibility: confirmed `MVPTab` and `PitchPreviewPage` safely handle both the complete MVP object and legacy array fallback via `(Array.isArray(...) ? ... : [])`.
+- [x] Created focused test suite in `backend/tests/mvpStorage.test.js`: verifies static persistence in `IdeaInputPage.js`, verifies complete MVP preservation in `localStorage`, reproduces buggy truncation behavior, tests `MVPTab` and `PitchPreviewPage` readers, and verifies backward compatibility with legacy array storage.
+- [x] Updated `backend/package.json` test script to execute all test suites: controller tests, USP data-flow tests, and MVP persistence tests with zero external dependencies.
+- [x] Verified full regression pass: backend syntax check (`node -c`), all backend unit tests pass, and frontend production build compiles cleanly.
 
 ---
 
 ## 8. Next Chunk
 
-**Chunk 1.3 — Fix MVP localStorage Data Truncation**
-- Resolve truncation of `technicalRequirements` and `launchTimeline` in `localStorage` in `frontend/src/pages/IdeaInputPage.js` so full MVP generation data is preserved and displayed.
+**Chunk 1.4 — Fix Frontend Routing Inconsistencies**
+- Resolve routing inconsistencies and route mismatches across navigation links, action buttons, and pages in the frontend.
 
 ---
 
@@ -95,8 +97,9 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 - **Chunk 1.1**: Fix Critical Backend Controller Argument Bugs (Completed)
 - **Chunk 1.2**: Fix USP Payload Mismatch & Standardize Request Schemas (Completed)
-- **Chunk 1.3**: Fix MVP localStorage Data Truncation
-- **Chunk 1.4**: Resolve Gemini API Access / Key Credentials & Add Structured Error Handling
+- **Chunk 1.3**: Fix MVP localStorage Data Truncation (Completed)
+- **Chunk 1.4**: Fix Frontend Routing Inconsistencies
+- **Chunk 1.5**: Resolve Gemini API Access / Key Credentials & Add Structured Error Handling
 - **Phase 2**: Backend Database Persistence (User Accounts & Plan History)
 - **Phase 3**: Pitch Deck Export (PDF / PowerPoint) & Sharing
 - **Phase 4**: Production Hardening, Test Suite Modernization & CI/CD
@@ -106,8 +109,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `02a754fc6e83f13c2ebc201dd99ef317f67cb421` (Milestone Chunk 1.1)
-- **Chunk Milestone Commit**: b3cee2 (Milestone Chunk 1.2)
+- **Pre-Chunk Commit**: `b22a6f767e24fac4fac70b815fa8e59c52370716` (Milestone Chunk 1.2)
+- **Chunk Milestone Commit**: `4afe782` (Milestone Chunk 1.3)
 
 ---
 
@@ -117,9 +120,10 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 |---|---|---|
 | **Backend Syntax** | PASS | All backend JS files checked with `node -c`. |
 | **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000. |
-| **Backend Unit Tests** | PASS | `npm test` passed all controller argument and USP data-flow tests. |
+| **Backend Unit Tests** | PASS | `npm test` passed controller argument, USP data-flow, and MVP storage persistence tests. |
 | **USP Prompt Verification** | PASS | Tested all 6 models in `uspDataFlow.test.js`: prompt strings contain `data.usp` without undefined/fallback. |
-| **Frontend Production Build** | PASS | `npm run build` succeeds cleanly. |
+| **MVP Storage Verification** | PASS | `backend/tests/mvpStorage.test.js`: verifies complete MVP object retention, reproduces regression, and tests consumers + legacy fallback. |
+| **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.c70162d1.js`). |
 | **Gemini Live Generation** | BLOCKED (429/503) | Google upstream rate limits (5 RPM free tier) and model demand spikes. |
 
 ---
