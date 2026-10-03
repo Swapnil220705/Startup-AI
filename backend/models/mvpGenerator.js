@@ -1,5 +1,5 @@
-// backend/models/mvpGenerator.js
 const axios = require('axios');
+const { parseGeminiJson } = require('../utils/jsonParser');
 require('dotenv').config();
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -43,12 +43,8 @@ const generateMVP = async (data) => {
       }
     );
 
-    let rawText = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    // Remove markdown formatting if present
-    rawText = rawText.replace(/```json|```/g, '').trim();
-
-    return JSON.parse(rawText);
+    const rawText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    return parseGeminiJson(rawText);
   } catch (error) {
     console.error('Gemini MVP Error:', error.response?.data || error.message);
     throw new Error('Failed to generate MVP from Gemini');

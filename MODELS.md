@@ -62,12 +62,22 @@ The model handles structured generative reasoning for all 6 startup intelligence
 ## 4. Response Format & Parsing
 
 - **Prompting Strategy**: Every prompt instructs the model to return "strictly valid JSON" adhering to a documented schema, explicitly instructing the exclusion of conversational filler.
-- **Parsing Logic**:
+- **Robust Parsing Utility (`backend/utils/jsonParser.js`)**:
+  Gemini outputs frequently contain variations such as markdown code blocks (` ```json ... ``` `), conversational wrappers, trailing commas, UTF-8 BOMs, or unclosed fences. Responses across all 6 models are processed via `parseGeminiJson(rawText)`:
   ```javascript
-  let rawText = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
-  rawText = rawText.replace(/```json|```/g, '').trim();
-  return JSON.parse(rawText);
+  const { parseGeminiJson } = require('../utils/jsonParser');
+
+  // In each model handler:
+  const rawText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  return parseGeminiJson(rawText);
   ```
+  - **Parsing Pipeline**:
+    1. Strips UTF-8 BOM and zero-width spaces; trims whitespace.
+    2. Fast path: Direct `JSON.parse` attempt.
+    3. Fenced code block extraction (` ```json `, ` ```JSON `, ` ```javascript `, ` ``` `) including unclosed fences.
+    4. Outermost object `{...}` or array `[...]` candidate extraction (handling conversational preambles/postambles).
+    5. Trailing comma sanitization outside quoted string literals.
+    6. Descriptive `SyntaxError` reporting if all strategies fail.
 - **Fallback**: Throws an error caught by Express controllers if JSON parsing fails or the HTTP request errors out.
 
 ---
@@ -84,3 +94,4 @@ The model handles structured generative reasoning for all 6 startup intelligence
 
 - **Chunk 0.1**: `gemini-2.5-flash → gemini-3.8-flash`
   - *Rationale*: Google Generative Language API flagged `gemini-2.5-flash` as deprecated for new users ("*This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash*"). Upgraded all 6 backend modules to `gemini-3.8-flash`.
+- **Chunk 2.1**: Upgraded JSON response parsing across all 6 backend models from naive `replace(/```json|```/g, '')` to robust `parseGeminiJson` utility in `backend/utils/jsonParser.js`. Covers markdown code blocks, uppercase tags, unclosed fences, conversational preambles/postambles, trailing commas, and BOM sanitization.

@@ -65,63 +65,52 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ## 6. Current Status
 
-- **Phase**: Phase 1 — Core Backend & Data Flow Fixes (COMPLETED)
-- **Current Chunk**: Chunk 1.5 — End-to-End Generation Testing
+- **Phase**: Phase 2 — Product Reliability
+- **Current Chunk**: Chunk 2.1 — Robust Gemini JSON Parsing
 - **Status**: Completed
-- **Next Phase**: Phase 2 — Product Reliability
-- **Next Planned Chunk**: Chunk 2.1 — Robust Gemini JSON Parsing
+- **Next Planned Chunk**: Chunk 2.2 — Rate Limiting & Retry/Backoff Strategy
 
 ---
 
-## 7. Completed in Current Chunk (Chunk 1.5)
+## 7. Completed in Current Chunk (Chunk 2.1)
 
-- [x] Inspected and verified the complete end-to-end business plan generation flow across all 6 modules:
-  - Landing Page (`/`) → Idea Intake (`/start`) → `IdeaInputPage.js` canonical payload → 6 parallel Express endpoints → 6 controllers → 6 model prompt builders → Gemini API → response handling → browser `localStorage` → Dashboard (`/dashboard`) tabs and Pitch Preview (`/pitch-preview`).
-- [x] Verified the canonical frontend input payload in `IdeaInputPage.js`:
-  - Contains `{ startupName, industry, problem, solution, targetAudience, usp }`.
-  - Confirmed `usp` is consistently used across all 6 requests with zero references to deprecated `uniqueValueProposition`.
-- [x] Verified all 6 backend API endpoints and controller dispatch contracts:
-  - `/api/lean-canvas` → `leanCanvasController.js` → `generateLeanCanvas`
-  - `/api/mvp` → `mvpController.js` → `generateMVP`
-  - `/api/revenue` → `revenueController.js` → `generateRevenue`
-  - `/api/pitch` → `pitchController.js` → `generatePitch`
-  - `/api/personas` → `personaController.js` → `generatePersonas`
-  - `/api/competitors` → `competitorController.js` → `generateCompetitors`
-  - Confirmed all controllers pass `req.body` directly to model functions without string corruption.
-- [x] Verified backend model prompt construction:
-  - Confirmed all 6 model prompt builders correctly ingest `data.startupName` and `data.usp` without `undefined` interpolation or fallback degradation.
-- [x] Verified complete response storage mapping in `localStorage`:
-  - `localStorage['leanCanvas']`: Complete 9-box canvas object.
-  - `localStorage['mvp']`: Complete MVP object (`startupName`, `coreFeatures`, `technicalRequirements`, `launchTimeline`) without truncation.
-  - `localStorage['revenue']`: Array of revenue models and projections.
-  - `localStorage['pitch']`: Object containing `elevatorPitch`.
-  - `localStorage['personas']`: Array of user persona profiles.
-  - `localStorage['competitors']`: Array of competitor objects and differentiators.
-- [x] Verified downstream consumption across all Dashboard components and Pitch Preview:
-  - `OverviewTab`: Ingests company profile and USP.
-  - `MVPTab`: Correctly consumes `coreFeatures`, `technicalRequirements`, and `launchTimeline`.
-  - `RevenueTab`: Correctly renders revenue streams and pricing strategies.
-  - `CompetitorsTab`: Correctly renders competitor cards and differentiators.
-  - `PersonasTab`: Correctly renders target user personas.
-  - `PitchPreviewPage`: Extracts `pitch` data and `mvp.coreFeatures` for presentation slides.
-  - Bidirectional navigation between `/dashboard` and `/pitch-preview` functions cleanly via canonical routes.
-- [x] Created zero-dependency end-to-end integration test suite in `backend/tests/e2eGenerationFlow.test.js`:
-  - Simulates the entire generation chain: user form submission → canonical payload → controller dispatch → prompt validation → `localStorage` persistence → Dashboard and Pitch Preview consumption.
-- [x] Performed controlled live Gemini generation verification:
-  - Confirmed single-request direct model generation succeeds (`gemini-3.8-flash:generateContent` returns valid HTTP 200 with structured JSON).
-  - Documented known upstream concurrency restriction: parallel 6-request burst triggers Google free-tier quota (5 RPM) `429 RESOURCE_EXHAUSTED` or transient high-demand `503 UNAVAILABLE`.
-- [x] Performed repository-wide audit:
-  - Verified 0 active occurrences of `/input`, `/canvas` (as router path), `/my-plans`, or request-payload `uniqueValueProposition`.
-- [x] Completed Phase 1 (Core Backend & Data Flow Fixes).
+- [x] Designed and implemented `backend/utils/jsonParser.js`:
+  - `parseGeminiJson(rawText)` handles all common LLM response variations:
+    - Plain pristine JSON (objects and arrays).
+    - Markdown fenced code blocks (` ```json `, ` ```JSON `, ` ```javascript `, ` ``` `).
+    - Unclosed / truncated code fences (e.g. streaming cutoff or omitted closing backticks).
+    - Conversational preambles and postambles (e.g., "Here is your plan: ... Hope this helps!").
+    - Outermost `{...}` and `[...]` candidate discovery.
+    - Trailing commas before `}` and `]` sanitized via a string-literal-aware state machine preserving commas inside quoted strings.
+    - UTF-8 Byte Order Marks (`\uFEFF`) and zero-width spaces (`\u200B-\u200D`) stripped automatically.
+    - Idempotent passthrough for already-parsed objects.
+    - Descriptive error reporting when text contains no valid JSON.
+- [x] Upgraded all 6 backend model files to replace brittle `.replace(/```json|```/g, '')` with `parseGeminiJson`:
+  - `backend/models/leanCanvas.js`
+  - `backend/models/competitorsModel.js`
+  - `backend/models/mvpGenerator.js`
+  - `backend/models/personasModel.js`
+  - `backend/models/pitchModel.js`
+  - `backend/models/revenueModel.js`
+- [x] Created comprehensive unit and integration test suite in `backend/tests/jsonParser.test.js`:
+  - Test 1: Plain pristine JSON (objects and arrays).
+  - Test 2: Markdown code blocks (json, JSON, js, generic, unclosed).
+  - Test 3: Conversational wrappers (preamble, postamble, both, unfenced).
+  - Test 4: Trailing commas in objects, arrays, nested structures, and string literal safety.
+  - Test 5: UTF-8 BOM, zero-width spaces, and excess whitespace.
+  - Test 6: Real-world schemas for all 6 generation modules.
+  - Test 7: Error handling for null, undefined, empty, whitespace-only, non-string, and unparseable input.
+  - Test 8: Object passthrough idempotency.
+  - Test 9: End-to-end integration verifying all 6 model functions (`generateLeanCanvas`, `generateMVP`, `generateRevenue`, `generatePitch`, `generatePersonas`, `generateCompetitors`) with varied mocked responses.
+- [x] Updated `backend/package.json` test script to include `jsonParser.test.js`.
+- [x] Full regression verification: all 6 backend test suites pass with 0 errors.
 
 ---
 
-## 8. Next Phase & Chunk
+## 8. Next Chunk
 
-**Phase 2 — Product Reliability**
-- **Chunk 2.1 — Robust Gemini JSON Parsing**: Implement resilient JSON extraction handling markdown code blocks, partial fences, and malformed strings.
-- **Chunk 2.2 — Rate Limiting & Retry/Backoff Strategy**: Implement structured pacing and exponential backoff to handle Google free-tier 5 RPM quota limitations.
-- **Chunk 2.3 — Graceful Frontend Error Handling**: Allow partial generation results to display when specific modules experience upstream 429/503 errors.
+**Chunk 2.2 — Rate Limiting & Retry/Backoff Strategy**
+- Implement structured request pacing or exponential backoff to handle Google free-tier 5 RPM quota limitations and avoid concurrent `429 RESOURCE_EXHAUSTED` errors during the 6-module generation workflow.
 
 ---
 
@@ -133,10 +122,10 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 1.2: Fix USP Payload Field Mismatch & Standardize Request Schemas (Completed - `b22a6f7`)
   - Chunk 1.3: Fix MVP localStorage Data Truncation (Completed - `5a06ab5`)
   - Chunk 1.4: Fix Frontend Routing Inconsistencies (Completed - `26e1d2d`)
-  - Chunk 1.5: End-to-End Generation Testing (Completed)
-- **Phase 2: Product Reliability (NEXT)**
-  - Chunk 2.1: Robust Gemini JSON Parsing
-  - Chunk 2.2: Rate Limiting & Retry/Backoff Strategy
+  - Chunk 1.5: End-to-End Generation Testing (Completed - `c8a625a`)
+- **Phase 2: Product Reliability (IN PROGRESS)**
+  - Chunk 2.1: Robust Gemini JSON Parsing (Completed)
+  - Chunk 2.2: Rate Limiting & Retry/Backoff Strategy (Next)
   - Chunk 2.3: Graceful Frontend Error Handling & Partial Generation Recovery
 - **Phase 3: Backend Database Persistence** (User Accounts & Plan History)
 - **Phase 4: Pitch Deck Export & Sharing** (PDF / PowerPoint exports)
@@ -147,8 +136,9 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `26e1d2d` (Milestone Chunk 1.4)
+- **Pre-Chunk Commit**: `c8a625a` (Milestone Chunk 1.5)
 - **Phase 1 Status**: COMPLETED
+- **Phase 2 Status**: In Progress (Chunk 2.1 Completed)
 
 ---
 
@@ -158,7 +148,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 |---|---|---|
 | **Backend Syntax** | PASS | All backend JS files checked with `node -c`. |
 | **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000. |
-| **Backend Test Suite (5 suites)** | PASS | `npm test` runs all 5 test files cleanly: `controllers.test.js`, `uspDataFlow.test.js`, `mvpStorage.test.js`, `frontendRoutes.test.js`, `e2eGenerationFlow.test.js`. |
+| **Backend Test Suite (6 suites)** | PASS | `npm test` runs all 6 test files cleanly: `controllers.test.js`, `uspDataFlow.test.js`, `mvpStorage.test.js`, `frontendRoutes.test.js`, `e2eGenerationFlow.test.js`, `jsonParser.test.js`. |
+| **Robust JSON Parser** | PASS | `backend/tests/jsonParser.test.js`: 9 test suites covering code blocks, conversational wrappers, unclosed fences, trailing commas, BOMs, error handling, and 6 model integrations. |
 | **USP Prompt Verification** | PASS | Tested all 6 models in `uspDataFlow.test.js`: prompt strings contain `data.usp` without undefined/fallback. |
 | **MVP Storage Verification** | PASS | `backend/tests/mvpStorage.test.js`: verifies complete MVP object retention, reproduces regression, and tests consumers + legacy fallback. |
 | **Frontend Routing Verification** | PASS | `backend/tests/frontendRoutes.test.js`: 100% of active `navigate()` calls map to canonical routes; no stale `/input`, `/canvas`, or `/my-plans` references. |
