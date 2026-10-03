@@ -66,51 +66,63 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 2 — Product Reliability
-- **Current Chunk**: Chunk 2.1 — Robust Gemini JSON Parsing
+- **Current Chunk**: Chunk 2.2 — Gemini Rate Limiting & Retry/Backoff Strategy
 - **Status**: Completed
-- **Next Planned Chunk**: Chunk 2.2 — Rate Limiting & Retry/Backoff Strategy
+- **Next Planned Chunk**: Chunk 2.3 — Clean API / Partial Generation Errors
 
 ---
 
-## 7. Completed in Current Chunk (Chunk 2.1)
+## 7. Completed in Current Chunk (Chunk 2.2)
 
-- [x] Designed and implemented `backend/utils/jsonParser.js`:
-  - `parseGeminiJson(rawText)` handles all common LLM response variations:
-    - Plain pristine JSON (objects and arrays).
-    - Markdown fenced code blocks (` ```json `, ` ```JSON `, ` ```javascript `, ` ``` `).
-    - Unclosed / truncated code fences (e.g. streaming cutoff or omitted closing backticks).
-    - Conversational preambles and postambles (e.g., "Here is your plan: ... Hope this helps!").
-    - Outermost `{...}` and `[...]` candidate discovery.
-    - Trailing commas before `}` and `]` sanitized via a string-literal-aware state machine preserving commas inside quoted strings.
-    - UTF-8 Byte Order Marks (`\uFEFF`) and zero-width spaces (`\u200B-\u200D`) stripped automatically.
-    - Idempotent passthrough for already-parsed objects.
-    - Descriptive error reporting when text contains no valid JSON.
-- [x] Upgraded all 6 backend model files to replace brittle `.replace(/```json|```/g, '')` with `parseGeminiJson`:
+- [x] Inspected existing model HTTP calling pattern: confirmed all 6 models duplicated identical Axios calls with no timeouts, retries, or rate limiting.
+- [x] Designed and implemented centralized request client in `backend/services/geminiClient.js`:
+  - `callGemini(prompt, options)` manages HTTP POST requests, timeouts, retries, backoff, and concurrency.
+  - **Timeout Handling**: Default 30,000 ms bounded timeout (`GEMINI_TIMEOUT_MS`) prevents connection hangs.
+  - **Error Classification (`isTransientError`)**:
+    - Retries transient errors: HTTP 429, 408, 500, 502, 503, 504, `ECONNRESET`, `ETIMEDOUT`, `ECONNABORTED`, socket hang up, and network failures.
+    - Fails fast on permanent client/auth errors: HTTP 400, 401, 403, 404.
+  - **Exponential Backoff with Jitter (`calculateBackoffDelay`)**:
+    - Calculates `min(maxDelay, baseDelay * 2^(attempt - 1) + jitter)`.
+    - Configurable defaults: 1,000 ms base delay, doubling each retry up to 10,000 ms maximum, with 25% proportional jitter.
+  - **Retry-After Header Handling (`getRetryAfterDelayMs`)**:
+    - Inspects and parses `Retry-After` headers (in seconds or HTTP dates) up to `maxDelayMs`.
+  - **In-Process Concurrency Limiter (`ConcurrencyLimiter`)**:
+    - Zero-dependency semaphore limiting in-flight requests to max 2 (`GEMINI_MAX_CONCURRENT`), smoothing the 6-module parallel intake spike.
+    - Safe `try ... finally` release guarantees slots are never leaked on success or failure.
+  - **Sanitized Logging**: Logs model context, status codes, retry counts, and delay intervals without exposing API keys, complete prompts, or user data.
+- [x] Refactored all 6 backend models to route requests through `callGemini`:
   - `backend/models/leanCanvas.js`
   - `backend/models/competitorsModel.js`
   - `backend/models/mvpGenerator.js`
   - `backend/models/personasModel.js`
   - `backend/models/pitchModel.js`
   - `backend/models/revenueModel.js`
-- [x] Created comprehensive unit and integration test suite in `backend/tests/jsonParser.test.js`:
-  - Test 1: Plain pristine JSON (objects and arrays).
-  - Test 2: Markdown code blocks (json, JSON, js, generic, unclosed).
-  - Test 3: Conversational wrappers (preamble, postamble, both, unfenced).
-  - Test 4: Trailing commas in objects, arrays, nested structures, and string literal safety.
-  - Test 5: UTF-8 BOM, zero-width spaces, and excess whitespace.
-  - Test 6: Real-world schemas for all 6 generation modules.
-  - Test 7: Error handling for null, undefined, empty, whitespace-only, non-string, and unparseable input.
-  - Test 8: Object passthrough idempotency.
-  - Test 9: End-to-end integration verifying all 6 model functions (`generateLeanCanvas`, `generateMVP`, `generateRevenue`, `generatePitch`, `generatePersonas`, `generateCompetitors`) with varied mocked responses.
-- [x] Updated `backend/package.json` test script to include `jsonParser.test.js`.
-- [x] Full regression verification: all 6 backend test suites pass with 0 errors.
+  - Preserved the clean separation: model prompts → `callGemini` → `parseGeminiJson` → parsed response.
+- [x] Created comprehensive unit and integration test suite in `backend/tests/geminiClient.test.js`:
+  - Test 1: Successful first-attempt request (no retry).
+  - Test 2: HTTP 429 retry and recovery.
+  - Test 3: HTTP 503 overload retry and recovery.
+  - Test 4: Network failure (`ECONNRESET`) retry and recovery.
+  - Test 5: Permanent HTTP 400 fails immediately without retrying.
+  - Test 6: Permanent HTTP 401 and 403 fail immediately without retrying.
+  - Test 7: Exhausted retries propagates final error.
+  - Test 8: Configurable retry limit (`maxRetries`).
+  - Test 9: Deterministic exponential backoff calculation (1s, 2s, 4s).
+  - Test 10: Delay strictly capped at `maxDelayMs`.
+  - Test 11: Jitter implementation verified deterministically with injected random generator.
+  - Test 11b: `Retry-After` header parsing and capping.
+  - Test 12: Concurrency limiter enforcement (max 2 active) and error release.
+  - Test 13: End-to-end integration verifying all 6 model handlers recover from transient errors and parse through `parseGeminiJson`.
+- [x] Updated `backend/package.json` test script to include `geminiClient.test.js`.
+- [x] Full regression verification: all 7 backend test suites pass with 0 errors, backend syntax check passes, and frontend production build succeeds cleanly.
+- [x] Live smoke-test verified: single live request recovered from a transient 503 response through `geminiClient` and succeeded with structured JSON.
 
 ---
 
 ## 8. Next Chunk
 
-**Chunk 2.2 — Rate Limiting & Retry/Backoff Strategy**
-- Implement structured request pacing or exponential backoff to handle Google free-tier 5 RPM quota limitations and avoid concurrent `429 RESOURCE_EXHAUSTED` errors during the 6-module generation workflow.
+**Chunk 2.3 — Clean API / Partial Generation Errors**
+- Add clean error propagation, partial generation handling, and structured frontend status indicators when specific modules fail permanently or exhaust retries.
 
 ---
 
@@ -124,9 +136,9 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 1.4: Fix Frontend Routing Inconsistencies (Completed - `26e1d2d`)
   - Chunk 1.5: End-to-End Generation Testing (Completed - `c8a625a`)
 - **Phase 2: Product Reliability (IN PROGRESS)**
-  - Chunk 2.1: Robust Gemini JSON Parsing (Completed)
-  - Chunk 2.2: Rate Limiting & Retry/Backoff Strategy (Next)
-  - Chunk 2.3: Graceful Frontend Error Handling & Partial Generation Recovery
+  - Chunk 2.1: Robust Gemini JSON Parsing (Completed - `e0d7f83`)
+  - Chunk 2.2: Rate Limiting & Retry/Backoff Strategy (Completed)
+  - Chunk 2.3: Clean API / Partial Generation Errors (Next)
 - **Phase 3: Backend Database Persistence** (User Accounts & Plan History)
 - **Phase 4: Pitch Deck Export & Sharing** (PDF / PowerPoint exports)
 - **Phase 5: Production Hardening, Test Suite Modernization & CI/CD**
@@ -136,9 +148,9 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `c8a625a` (Milestone Chunk 1.5)
+- **Pre-Chunk Commit**: `e0d7f83` (Milestone Chunk 2.1)
 - **Phase 1 Status**: COMPLETED
-- **Phase 2 Status**: In Progress (Chunk 2.1 Completed)
+- **Phase 2 Status**: In Progress (Chunk 2.2 Completed)
 
 ---
 
@@ -148,14 +160,15 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 |---|---|---|
 | **Backend Syntax** | PASS | All backend JS files checked with `node -c`. |
 | **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000. |
-| **Backend Test Suite (6 suites)** | PASS | `npm test` runs all 6 test files cleanly: `controllers.test.js`, `uspDataFlow.test.js`, `mvpStorage.test.js`, `frontendRoutes.test.js`, `e2eGenerationFlow.test.js`, `jsonParser.test.js`. |
+| **Backend Test Suite (7 suites)** | PASS | `npm test` runs all 7 test files cleanly: `controllers.test.js`, `uspDataFlow.test.js`, `mvpStorage.test.js`, `frontendRoutes.test.js`, `e2eGenerationFlow.test.js`, `jsonParser.test.js`, `geminiClient.test.js`. |
+| **Gemini Client & Retry Suite** | PASS | `backend/tests/geminiClient.test.js`: 13 test categories covering 429/503 retries, network recovery, fail-fast on 400/401/403, exponential backoff, jitter, limiter, and model integration. |
 | **Robust JSON Parser** | PASS | `backend/tests/jsonParser.test.js`: 9 test suites covering code blocks, conversational wrappers, unclosed fences, trailing commas, BOMs, error handling, and 6 model integrations. |
 | **USP Prompt Verification** | PASS | Tested all 6 models in `uspDataFlow.test.js`: prompt strings contain `data.usp` without undefined/fallback. |
 | **MVP Storage Verification** | PASS | `backend/tests/mvpStorage.test.js`: verifies complete MVP object retention, reproduces regression, and tests consumers + legacy fallback. |
 | **Frontend Routing Verification** | PASS | `backend/tests/frontendRoutes.test.js`: 100% of active `navigate()` calls map to canonical routes; no stale `/input`, `/canvas`, or `/my-plans` references. |
 | **End-to-End Generation Flow** | PASS | `backend/tests/e2eGenerationFlow.test.js`: deterministic simulation of end-to-end chain from form input to Dashboard/PitchPreview consumption passes with 0 errors. |
 | **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.7412d32b.js`). |
-| **Gemini Live Generation** | CONTROLLED PASS / 429/503 CONCURRENCY HOLD | Single call returns HTTP 200 OK on `gemini-3.8-flash`; parallel 6-request burst triggers Google free-tier 5 RPM limit (`429 RESOURCE_EXHAUSTED` / `503 UNAVAILABLE`). |
+| **Gemini Live Generation** | CONTROLLED PASS (RETRY VERIFIED) | Controlled live request recovered from transient 503 via automatic exponential backoff in `geminiClient` and returned valid JSON. |
 
 ---
 

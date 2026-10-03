@@ -22,10 +22,16 @@ This document records the verified AI models, endpoints, and configuration used 
 
 ---
 
-## 2. Configuration Locations
+## 2. Configuration & Centralized Client
 
-The model is configured across 6 backend model files:
+Gemini requests are centralized through `backend/services/geminiClient.js`, which manages:
+- HTTP requests via Axios
+- Request timeouts (default: 30,000 ms)
+- In-process concurrency rate limiting (default: max 2 concurrent requests)
+- Transient error classification & exponential backoff with jitter
+- Header `Retry-After` parsing
 
+All 6 backend generation models delegate requests to `callGemini(prompt, options)`:
 1. `backend/models/leanCanvas.js` (`generateLeanCanvas`)
 2. `backend/models/competitorsModel.js` (`generateCompetitors`)
 3. `backend/models/mvpGenerator.js` (`generateMVP`)
@@ -33,10 +39,17 @@ The model is configured across 6 backend model files:
 5. `backend/models/pitchModel.js` (`generatePitch`)
 6. `backend/models/revenueModel.js` (`generateRevenue`)
 
-In all 6 files, the endpoint is declared as:
-```javascript
-const MODEL_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-3.8-flash:generateContent';
-```
+### Environment & Tuning Configuration
+
+| Variable | Default Value | Description |
+|---|---|---|
+| `GEMINI_API_KEY` | *(from `.env`)* | Google AI Studio REST API authentication key |
+| `GEMINI_MODEL_URL` | `https://generativelanguage.googleapis.com/v1/models/gemini-3.8-flash:generateContent` | Target model endpoint |
+| `GEMINI_MAX_RETRIES` | `3` | Maximum retry attempts for transient errors |
+| `GEMINI_RETRY_BASE_DELAY_MS` | `1000` | Base exponential backoff delay (ms) |
+| `GEMINI_RETRY_MAX_DELAY_MS` | `10000` | Maximum backoff delay cap (ms) |
+| `GEMINI_TIMEOUT_MS` | `30000` | Axios HTTP request timeout (ms) |
+| `GEMINI_MAX_CONCURRENT` | `2` | Maximum concurrent in-process requests to Gemini |
 
 ---
 
@@ -59,26 +72,36 @@ The model handles structured generative reasoning for all 6 startup intelligence
 
 ---
 
-## 4. Response Format & Parsing
+## 4. Request Flow, Retry Strategy & Response Parsing
 
 - **Prompting Strategy**: Every prompt instructs the model to return "strictly valid JSON" adhering to a documented schema, explicitly instructing the exclusion of conversational filler.
-- **Robust Parsing Utility (`backend/utils/jsonParser.js`)**:
-  Gemini outputs frequently contain variations such as markdown code blocks (` ```json ... ``` `), conversational wrappers, trailing commas, UTF-8 BOMs, or unclosed fences. Responses across all 6 models are processed via `parseGeminiJson(rawText)`:
+- **Request Pipeline (`backend/services/geminiClient.js`)**:
+  All 6 models dispatch requests through `callGemini(prompt, options)`:
   ```javascript
+  const { callGemini } = require('../services/geminiClient');
   const { parseGeminiJson } = require('../utils/jsonParser');
 
   // In each model handler:
-  const rawText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const rawText = await callGemini(prompt, { context: 'Lean Canvas' });
   return parseGeminiJson(rawText);
   ```
-  - **Parsing Pipeline**:
-    1. Strips UTF-8 BOM and zero-width spaces; trims whitespace.
-    2. Fast path: Direct `JSON.parse` attempt.
-    3. Fenced code block extraction (` ```json `, ` ```JSON `, ` ```javascript `, ` ``` `) including unclosed fences.
-    4. Outermost object `{...}` or array `[...]` candidate extraction (handling conversational preambles/postambles).
-    5. Trailing comma sanitization outside quoted string literals.
-    6. Descriptive `SyntaxError` reporting if all strategies fail.
-- **Fallback**: Throws an error caught by Express controllers if JSON parsing fails or the HTTP request errors out.
+  - **Concurrency Limiting**: In-process semaphore throttles bursts to a maximum of 2 concurrent requests (`GEMINI_MAX_CONCURRENT`), smoothing the parallel intake spike.
+  - **Timeout Protection**: Requests time out after 30,000 ms (`GEMINI_TIMEOUT_MS`) to prevent hanging sockets.
+  - **Retry Classification**:
+    - **Transient (Retryable)**: HTTP 429 (Rate Limit / Quota), HTTP 408, HTTP 500, 502, 503 (Overload), 504, socket hang up, `ECONNRESET`, `ETIMEDOUT`, `ECONNABORTED`, and network drops.
+    - **Permanent (Non-Retryable)**: HTTP 400 (Bad Request), HTTP 401 (Unauthorized), HTTP 403 (Forbidden), HTTP 404 (Not Found). Fails immediately without wasting quota.
+  - **Exponential Backoff with Jitter**:
+    Calculates `min(maxDelay, baseDelay * 2^(attempt - 1) + jitter)`. Defaults: 1s base delay, doubling each attempt up to 10s maximum, with 25% proportional jitter.
+  - **Retry-After Header**: Automatically parsed and respected when returned by Google API headers.
+- **Robust Parsing Utility (`backend/utils/jsonParser.js`)**:
+  Responses are parsed via `parseGeminiJson(rawText)`:
+  1. Strips UTF-8 BOM and zero-width spaces; trims whitespace.
+  2. Fast path: Direct `JSON.parse` attempt.
+  3. Fenced code block extraction (` ```json `, ` ```JSON `, ` ```javascript `, ` ``` `) including unclosed fences.
+  4. Outermost object `{...}` or array `[...]` candidate extraction (handling conversational preambles/postambles).
+  5. Trailing comma sanitization outside quoted string literals.
+  6. Descriptive `SyntaxError` reporting if all strategies fail.
+- **Fallback**: Throws an error caught by Express controllers if JSON parsing fails or the HTTP request errors out after exhausting retries.
 
 ---
 
@@ -86,7 +109,8 @@ The model handles structured generative reasoning for all 6 startup intelligence
 
 - **Model Availability**: Confirmed present and verified via `GET https://generativelanguage.googleapis.com/v1/models/gemini-3.8-flash`.
 - **Token Counting**: Verified working via `POST https://generativelanguage.googleapis.com/v1/models/gemini-3.8-flash:countTokens` (`HTTP 200`).
-- **Generation Status**: In Chunk 0.1, the currently configured project API key returns `403 Forbidden: "Your project has been denied access. Please contact support."` on `generateContent` across all models due to a Google Cloud project-level hold. The code has been upgraded to `gemini-3.8-flash` per user directive while documenting the external API quota/access hold.
+- **Generation Status**: Live generation functions on `gemini-3.8-flash`. Verified in Chunk 2.2 with a controlled live smoke-test that recovered from a transient 503 overload using automatic exponential backoff.
+- **Quota Limitations**: Free tier enforces a 5 requests per minute (RPM) limit. Parallel 6-request bursts are throttled by the local concurrency limiter and recovered via exponential backoff.
 
 ---
 
@@ -95,3 +119,4 @@ The model handles structured generative reasoning for all 6 startup intelligence
 - **Chunk 0.1**: `gemini-2.5-flash → gemini-3.8-flash`
   - *Rationale*: Google Generative Language API flagged `gemini-2.5-flash` as deprecated for new users ("*This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash*"). Upgraded all 6 backend modules to `gemini-3.8-flash`.
 - **Chunk 2.1**: Upgraded JSON response parsing across all 6 backend models from naive `replace(/```json|```/g, '')` to robust `parseGeminiJson` utility in `backend/utils/jsonParser.js`. Covers markdown code blocks, uppercase tags, unclosed fences, conversational preambles/postambles, trailing commas, and BOM sanitization.
+- **Chunk 2.2**: Centralized Gemini HTTP requests into `backend/services/geminiClient.js`. Implemented bounded exponential backoff with proportional jitter, `Retry-After` header extraction, transient error classification (retrying 429, 500, 502, 503, 504, network errors; failing fast on 400, 401, 403), 30s request timeouts, and in-process concurrency limiting (max 2 concurrent requests).

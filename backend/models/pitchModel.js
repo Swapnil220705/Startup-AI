@@ -1,9 +1,5 @@
-const axios = require('axios');
+const { callGemini } = require('../services/geminiClient');
 const { parseGeminiJson } = require('../utils/jsonParser');
-require('dotenv').config();
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-3.8-flash:generateContent';
 
 const generatePitch = async (data) => {
   const prompt = `
@@ -31,20 +27,8 @@ const generatePitch = async (data) => {
   `;
 
   try {
-    const response = await axios.post(
-          MODEL_URL + `?key=${GEMINI_API_KEY}`,
-          {
-            contents: [{ parts: [{ text: prompt }] }]
-          },
-          {
-            headers: {
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-    
-        const rawText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        return parseGeminiJson(rawText);
+    const rawText = await callGemini(prompt, { context: 'Pitch' });
+    return parseGeminiJson(rawText);
   } catch (error) {
     console.error('Gemini Pitch Model Error:', error.response?.data || error.message);
     throw new Error('Failed to generate Elevator Pitch from Gemini');
