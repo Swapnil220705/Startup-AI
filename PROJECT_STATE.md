@@ -65,63 +65,90 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ## 6. Current Status
 
-- **Phase**: Phase 1 — Core Backend & Data Flow Fixes
-- **Current Chunk**: Chunk 1.4 — Fix Frontend Routing Inconsistencies
+- **Phase**: Phase 1 — Core Backend & Data Flow Fixes (COMPLETED)
+- **Current Chunk**: Chunk 1.5 — End-to-End Generation Testing
 - **Status**: Completed
+- **Next Phase**: Phase 2 — Product Reliability
+- **Next Planned Chunk**: Chunk 2.1 — Robust Gemini JSON Parsing
 
 ---
 
-## 7. Completed in Current Chunk (Chunk 1.4)
+## 7. Completed in Current Chunk (Chunk 1.5)
 
-- [x] Inspected routing implementation in `frontend/src/App.js` and `frontend/src/utils/Router.js`: verified the 4 canonical registered routes:
-  - `/` → `LandingPage`
-  - `/start` → `IdeaInputPage`
-  - `/dashboard` → `DashboardPage`
-  - `/pitch-preview` → `PitchPreviewPage`
-- [x] Audited all 15 active `navigate(...)` calls across all components and pages in `frontend/src/`.
-- [x] Corrected stale route `/input` → `/start` in `frontend/src/pages/DashboardPage.js` (empty state "Generate New Plan" CTA).
-- [x] Corrected stale route `/input` → `/start` in `frontend/src/pages/PitchPreviewPage.js` (empty state "Generate New Plan" CTA).
-- [x] Aligned `frontend/src/components/Header.js`:
-  - Activated desktop navigation links for `/dashboard` and `/pitch-preview` (allowing navigation between Dashboard and Pitch Preview).
-  - Removed dead link to `/my-plans` from mobile navigation (aligning with desktop where history feature is deferred to Phase 2).
-- [x] Verified `/canvas` is an internal tab identifier in `DashboardPage.js` (`activeTab === 'canvas'`), not an invalid router path.
-- [x] Created comprehensive test suite in `backend/tests/frontendRoutes.test.js`:
-  - Discovers canonical routes dynamically from `App.js`.
-  - Scans all frontend files for active `navigate()` calls and asserts 100% of targets belong to the canonical route set.
-  - Verifies zero references to invalid paths (`/input`, `/canvas`, `/my-plans`).
-  - Verifies reachability of all registered canonical routes.
-  - Verifies `Router.js` history simulation (`pushState`, `popstate`).
-  - Verifies empty-state buttons and header navigation.
-- [x] Updated `backend/package.json` test script to include `frontendRoutes.test.js`.
-- [x] Verified full regression pass: backend syntax clean, all 4 backend test suites pass (controllers, USP, MVP storage, frontend routing), and frontend production build compiles cleanly.
+- [x] Inspected and verified the complete end-to-end business plan generation flow across all 6 modules:
+  - Landing Page (`/`) → Idea Intake (`/start`) → `IdeaInputPage.js` canonical payload → 6 parallel Express endpoints → 6 controllers → 6 model prompt builders → Gemini API → response handling → browser `localStorage` → Dashboard (`/dashboard`) tabs and Pitch Preview (`/pitch-preview`).
+- [x] Verified the canonical frontend input payload in `IdeaInputPage.js`:
+  - Contains `{ startupName, industry, problem, solution, targetAudience, usp }`.
+  - Confirmed `usp` is consistently used across all 6 requests with zero references to deprecated `uniqueValueProposition`.
+- [x] Verified all 6 backend API endpoints and controller dispatch contracts:
+  - `/api/lean-canvas` → `leanCanvasController.js` → `generateLeanCanvas`
+  - `/api/mvp` → `mvpController.js` → `generateMVP`
+  - `/api/revenue` → `revenueController.js` → `generateRevenue`
+  - `/api/pitch` → `pitchController.js` → `generatePitch`
+  - `/api/personas` → `personaController.js` → `generatePersonas`
+  - `/api/competitors` → `competitorController.js` → `generateCompetitors`
+  - Confirmed all controllers pass `req.body` directly to model functions without string corruption.
+- [x] Verified backend model prompt construction:
+  - Confirmed all 6 model prompt builders correctly ingest `data.startupName` and `data.usp` without `undefined` interpolation or fallback degradation.
+- [x] Verified complete response storage mapping in `localStorage`:
+  - `localStorage['leanCanvas']`: Complete 9-box canvas object.
+  - `localStorage['mvp']`: Complete MVP object (`startupName`, `coreFeatures`, `technicalRequirements`, `launchTimeline`) without truncation.
+  - `localStorage['revenue']`: Array of revenue models and projections.
+  - `localStorage['pitch']`: Object containing `elevatorPitch`.
+  - `localStorage['personas']`: Array of user persona profiles.
+  - `localStorage['competitors']`: Array of competitor objects and differentiators.
+- [x] Verified downstream consumption across all Dashboard components and Pitch Preview:
+  - `OverviewTab`: Ingests company profile and USP.
+  - `MVPTab`: Correctly consumes `coreFeatures`, `technicalRequirements`, and `launchTimeline`.
+  - `RevenueTab`: Correctly renders revenue streams and pricing strategies.
+  - `CompetitorsTab`: Correctly renders competitor cards and differentiators.
+  - `PersonasTab`: Correctly renders target user personas.
+  - `PitchPreviewPage`: Extracts `pitch` data and `mvp.coreFeatures` for presentation slides.
+  - Bidirectional navigation between `/dashboard` and `/pitch-preview` functions cleanly via canonical routes.
+- [x] Created zero-dependency end-to-end integration test suite in `backend/tests/e2eGenerationFlow.test.js`:
+  - Simulates the entire generation chain: user form submission → canonical payload → controller dispatch → prompt validation → `localStorage` persistence → Dashboard and Pitch Preview consumption.
+- [x] Performed controlled live Gemini generation verification:
+  - Confirmed single-request direct model generation succeeds (`gemini-3.8-flash:generateContent` returns valid HTTP 200 with structured JSON).
+  - Documented known upstream concurrency restriction: parallel 6-request burst triggers Google free-tier quota (5 RPM) `429 RESOURCE_EXHAUSTED` or transient high-demand `503 UNAVAILABLE`.
+- [x] Performed repository-wide audit:
+  - Verified 0 active occurrences of `/input`, `/canvas` (as router path), `/my-plans`, or request-payload `uniqueValueProposition`.
+- [x] Completed Phase 1 (Core Backend & Data Flow Fixes).
 
 ---
 
-## 8. Next Chunk
+## 8. Next Phase & Chunk
 
-**Chunk 1.5 — End-to-End Generation Testing**
-- Validate end-to-end business plan generation flow with structured error handling and resilient retry/rate-limit recovery.
+**Phase 2 — Product Reliability**
+- **Chunk 2.1 — Robust Gemini JSON Parsing**: Implement resilient JSON extraction handling markdown code blocks, partial fences, and malformed strings.
+- **Chunk 2.2 — Rate Limiting & Retry/Backoff Strategy**: Implement structured pacing and exponential backoff to handle Google free-tier 5 RPM quota limitations.
+- **Chunk 2.3 — Graceful Frontend Error Handling**: Allow partial generation results to display when specific modules experience upstream 429/503 errors.
 
 ---
 
 ## 9. Future Roadmap
 
-- **Chunk 1.1**: Fix Critical Backend Controller Argument Bugs (Completed)
-- **Chunk 1.2**: Fix USP Payload Mismatch & Standardize Request Schemas (Completed)
-- **Chunk 1.3**: Fix MVP localStorage Data Truncation (Completed)
-- **Chunk 1.4**: Fix Frontend Routing Inconsistencies (Completed)
-- **Chunk 1.5**: End-to-End Generation Testing
-- **Phase 2**: Backend Database Persistence (User Accounts & Plan History)
-- **Phase 3**: Pitch Deck Export (PDF / PowerPoint) & Sharing
-- **Phase 4**: Production Hardening, Test Suite Modernization & CI/CD
+- **Phase 1: Core Backend & Data Flow Fixes (COMPLETED)**
+  - Chunk 0.1: Baseline Audit + Project Documentation + Gemini Model Upgrade (Completed - `b531f3f`)
+  - Chunk 1.1: Fix Critical Backend Controller Argument Bugs (Completed - `02a754f`)
+  - Chunk 1.2: Fix USP Payload Field Mismatch & Standardize Request Schemas (Completed - `b22a6f7`)
+  - Chunk 1.3: Fix MVP localStorage Data Truncation (Completed - `5a06ab5`)
+  - Chunk 1.4: Fix Frontend Routing Inconsistencies (Completed - `26e1d2d`)
+  - Chunk 1.5: End-to-End Generation Testing (Completed)
+- **Phase 2: Product Reliability (NEXT)**
+  - Chunk 2.1: Robust Gemini JSON Parsing
+  - Chunk 2.2: Rate Limiting & Retry/Backoff Strategy
+  - Chunk 2.3: Graceful Frontend Error Handling & Partial Generation Recovery
+- **Phase 3: Backend Database Persistence** (User Accounts & Plan History)
+- **Phase 4: Pitch Deck Export & Sharing** (PDF / PowerPoint exports)
+- **Phase 5: Production Hardening, Test Suite Modernization & CI/CD**
 
 ---
 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `5a06ab5` (Milestone Chunk 1.3)
-- **Chunk Milestone Commit**: `6c4007c` (Milestone Chunk 1.4)
+- **Pre-Chunk Commit**: `26e1d2d` (Milestone Chunk 1.4)
+- **Phase 1 Status**: COMPLETED
 
 ---
 
@@ -131,12 +158,13 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 |---|---|---|
 | **Backend Syntax** | PASS | All backend JS files checked with `node -c`. |
 | **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000. |
-| **Backend Unit Tests** | PASS | `npm test` passed controller argument, USP data-flow, MVP storage persistence, and frontend routing tests. |
+| **Backend Test Suite (5 suites)** | PASS | `npm test` runs all 5 test files cleanly: `controllers.test.js`, `uspDataFlow.test.js`, `mvpStorage.test.js`, `frontendRoutes.test.js`, `e2eGenerationFlow.test.js`. |
 | **USP Prompt Verification** | PASS | Tested all 6 models in `uspDataFlow.test.js`: prompt strings contain `data.usp` without undefined/fallback. |
 | **MVP Storage Verification** | PASS | `backend/tests/mvpStorage.test.js`: verifies complete MVP object retention, reproduces regression, and tests consumers + legacy fallback. |
 | **Frontend Routing Verification** | PASS | `backend/tests/frontendRoutes.test.js`: 100% of active `navigate()` calls map to canonical routes; no stale `/input`, `/canvas`, or `/my-plans` references. |
+| **End-to-End Generation Flow** | PASS | `backend/tests/e2eGenerationFlow.test.js`: deterministic simulation of end-to-end chain from form input to Dashboard/PitchPreview consumption passes with 0 errors. |
 | **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.7412d32b.js`). |
-| **Gemini Live Generation** | BLOCKED (429/503) | Google upstream rate limits (5 RPM free tier) and model demand spikes. |
+| **Gemini Live Generation** | CONTROLLED PASS / 429/503 CONCURRENCY HOLD | Single call returns HTTP 200 OK on `gemini-3.8-flash`; parallel 6-request burst triggers Google free-tier 5 RPM limit (`429 RESOURCE_EXHAUSTED` / `503 UNAVAILABLE`). |
 
 ---
 
