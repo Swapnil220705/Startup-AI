@@ -405,11 +405,13 @@ To avoid leaving stale data in the browser working state after mutations, the fo
 
 ---
 
-## 9. Proposed Authentication & Anonymous Trial Architecture (Phase 4 Design)
+## 9. Authentication & Multi-User Plan Architecture (Phase 4)
 
-> [!IMPORTANT]
-> **Proposed / Phase 4 design — not yet implemented**
-> The following architecture has been audited and designed in Chunk 4.1. Implementation begins in Chunk 4.2.
+> [!NOTE]
+> **Implementation Status**:
+> - **Chunk 4.2 (COMPLETED)**: Database Migration 002 (`users`, `sessions`, `trial_sessions`, `plans.user_id`), Authentication Service (`authService.js`), secure HTTP-only cookie sessions, Google ID token verification (`google-auth-library`), email signup/login/logout/me endpoints, timing-safe scrypt password hashing, and CORS credentials configuration.
+> - **Chunk 4.3 (PLANNED NEXT)**: Multi-user plan ownership scoping, anonymous trial 1-plan gatekeeper, and atomic trial plan claiming (`POST /api/plans/claim`).
+> - **Chunk 4.4 (PLANNED)**: Frontend AuthContext, AuthModal, Google Sign-in button, header user profile dropdown, and dashboard claim banner.
 
 ### 9.1 High-Level Authentication & Trial Flow
 

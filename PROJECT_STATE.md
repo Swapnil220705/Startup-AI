@@ -68,10 +68,10 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 4 — Authentication & Multi-User Plan Architecture
-- **Current Chunk**: Chunk 4.1 — Authentication & Anonymous Trial Architecture Audit
-- **Status**: Completed (Architecture & Design Audit)
-- **Phase 4 Status**: IN PROGRESS (Chunk 4.1 complete, Chunk 4.2 next)
-- **Next Planned Chunk**: Chunk 4.2 — Database Migration 002, User Model & Core Backend Auth Endpoints
+- **Current Chunk**: Chunk 4.2 — Authentication Backend Foundation
+- **Status**: Completed
+- **Phase 4 Status**: IN PROGRESS (Chunks 4.1 & 4.2 complete, Chunk 4.3 next)
+- **Next Planned Chunk**: Chunk 4.3 — Plan Ownership, Multi-User Isolation & Plan Claiming API
 
 ---
 
@@ -93,61 +93,61 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ---
 
-## 7.6 Current Completed Chunk: Chunk 4.1 — Authentication & Anonymous Trial Architecture Audit
+## 7.6 Completed in Chunk 4.1 — Authentication & Anonymous Trial Architecture Audit
 
-- [x] **Repository Inspection & Current Architecture Audit**:
-  - Backend: Verified Express 5.1.0, `better-sqlite3` WAL mode, `PRAGMA foreign_keys = ON`, transactional `schema_migrations` runner.
-  - Dependencies: Verified `"google-auth-library": "^10.1.0"` is already installed in `backend/package.json`.
-  - Network & CORS: Identified `cors()` default wildcard (`origin: '*'`, `credentials: false`); verified need for explicit origin (`http://localhost:3000`) and `credentials: true` for HTTP-only session cookies.
-  - Storage: Mapped 10 active `localStorage` keys; audited current single-user, unauthenticated `/api/plans` endpoints.
-- [x] **Product Requirements Formalized**:
-  - **Anonymous First-Time Visitor**: Visitors generate exactly ONE complete AI startup plan without upfront registration.
-  - **No Regeneration on Signup**: When an anonymous user signs up / logs in after exploring their generated plan, the existing plan is claimed and attached to their new account without losing data or regenerating.
-  - **Primary Auth Provider**: Google OAuth ("Continue with Google") prioritized for frictionless onboarding.
-  - **Secondary Auth Provider**: Native Email/Password supported for universal accessibility.
-  - **Persistent Session**: Secure HTTP-only cookies (`startup_ai_session`) backed by SQLite `sessions` table (no auth tokens in localStorage).
-- [x] **Database & User Model Architecture**:
-  - Designed Migration `002_add_user_id_to_plans.sql` (preserving `001_create_plans_table.sql` completely intact).
-  - Designed `users` table: `id` (UUID), `email` (UNIQUE), `name`, `picture_url`, `auth_provider` ('google' | 'local'), `provider_subject_id`, `password_hash` (NULL for Google users), `created_at`, `updated_at`.
-  - Designed `sessions` table: `id` (cryptographic token), `user_id` (FK -> users.id CASCADE), `expires_at`, `created_at`.
-  - Designed `trial_sessions` table: `id` (UUID cookie), `plan_id` (FK -> plans.id), `ip_hash`, `created_at`.
-  - Added `user_id TEXT REFERENCES users(id) ON DELETE CASCADE` to `plans` (NULL for unowned anonymous trials, populated upon claim).
-  - Existing Phase 3 data automatically remains safe with `user_id = NULL`.
-- [x] **Anonymous Trial & Abuse Protection**:
-  - Anonymous trial session cookie (`startup_ai_trial`) issued on first unauthenticated visit.
-  - Server-side trial gatekeeper in `trial_sessions` tracks consumed trials by cookie and salted IP hash.
-  - Returns structured HTTP 403 `TRIAL_LIMIT_REACHED` if an anonymous visitor attempts a second generation run, inviting them to authenticate.
-- [x] **Trial-to-Account Plan Claiming Design**:
-  - Endpoint `POST /api/plans/claim` with `{ planId }`.
-  - Atomic ownership transfer: `UPDATE plans SET user_id = :userId WHERE id = :planId AND user_id IS NULL`.
-  - Retains all 6 generated modules, metadata, and timestamps without duplication.
-  - Attaches to either newly created accounts or existing user accounts seamlessly.
-- [x] **Endpoint Authorization Matrix**:
-  - `POST /api/plans`: Authenticated user -> user plan; Anonymous user -> trial plan (`user_id = NULL`) if under trial limit.
-  - `GET /api/plans`: Authenticated user -> only plans where `user_id = req.user.id`; Anonymous user -> empty or trial session only.
-  - `GET /api/plans/:id`: Accessible if owned by caller or if unowned trial plan; returns 404 if owned by another user (prevents ID enumeration).
-  - `PATCH /api/plans/:id` & `DELETE /api/plans/:id`: Strictly requires `user_id = req.user.id`.
-- [x] **Frontend Auth UX Architecture**:
-  - Designed `AuthContext` managing `{ user, isAuthenticated, isLoading, loginWithGoogle, loginWithEmail, signupWithEmail, logout, claimPlan }`.
-  - Designed `AuthModal` with prominent "Continue with Google" button, tabbed Email login/signup, and inline error feedback.
-  - Designed Dashboard "Save My Startup Plan" claim banner and Header user profile dropdown.
-- [x] **Defined Phase 4 Breakdown**:
-  - Chunk 4.1: Architecture Audit & Design (THIS CHUNK - COMPLETE)
-  - Chunk 4.2: Database Migration 002, User Model & Core Backend Auth Endpoints
-  - Chunk 4.3: Plan Ownership, Multi-User Isolation & Plan Claiming API
-  - Chunk 4.4: Frontend Auth UX, Google Sign-In & Dashboard Claim Flow
+- [x] Audited full codebase (Express 5, SQLite, Google auth library, React 19, localStorage).
+- [x] Defined user model, session strategy (HTTP-only cookies), and Migration 002.
+- [x] Defined 1-trial anonymous generation limit, trial claiming flow, and endpoint authorization matrix.
+- [x] Defined 4-chunk Phase 4 roadmap.
+
+---
+
+## 7.7 Completed in Current Chunk (Chunk 4.2) — Authentication Backend Foundation
+
+- [x] **Database Migration 002 (`backend/db/migrations/002_add_user_id_to_plans.sql`)**:
+  - Created `users` table: `id` (UUID), `email` (UNIQUE NOCASE), `name`, `picture_url`, `auth_provider` ('google' | 'local'), `provider_subject_id`, `password_hash`, `created_at`, `updated_at`.
+  - Created `sessions` table: `id` (64-char crypto token), `user_id` (FK -> users ON DELETE CASCADE), `expires_at`, `created_at`.
+  - Created `trial_sessions` table: `id` (UUID), `plan_id` (FK -> plans ON DELETE SET NULL), `ip_hash`, `created_at`.
+  - Evolved `plans` table: added `user_id TEXT REFERENCES users(id) ON DELETE CASCADE` with composite index `idx_plans_user_id_created`.
+  - Maintained 100% backward compatibility: existing plans have `user_id = NULL` and remain fully readable.
+- [x] **Authentication Service (`backend/services/authService.js`)**:
+  - **Password Security**: Implemented salted scrypt password hashing (`crypto.scryptSync`, 16-byte random salt, 64-byte derived key) and timing-safe verification (`crypto.timingSafeEqual`).
+  - **Session Management**: Cryptographically random 64-character session tokens (`crypto.randomBytes(32)`), 30-day sliding expiry, database storage, and bounded expired session cleanup.
+  - **Cookie Security**: HTTP-only, `SameSite=Lax`, `Path=/`, positive `Max-Age`, and `Secure` in production (`startup_ai_session`). Zero tokens in `localStorage`.
+  - **Google Verification**: Verified token verification using pre-installed `google-auth-library` (`OAuth2Client.verifyIdToken`), enforced audience check against `GOOGLE_CLIENT_ID`, and verified email claim requirements.
+  - **Account Collision Defense**: If a Google login attempts to authenticate an email already registered with local password auth, returns structured HTTP 409 `ACCOUNT_COLLISION` without silent takeover.
+- [x] **Authentication Middleware (`backend/middleware/auth.js`)**:
+  - `authenticateUser`: Inspects incoming session cookie, verifies session and expiry in database, populates `req.user` and `req.session` (or `null`), and never blocks unauthenticated requests.
+  - `requireAuth`: Route guard returning structured HTTP 401 `UNAUTHORIZED` when no valid session is present.
+  - Registered globally in `backend/index.js` while keeping existing plan routes unauthenticated for Phase 3 compatibility.
+- [x] **Authentication Endpoints & Controllers (`backend/controllers/authController.js` & `backend/routes/auth.js`)**:
+  - `POST /api/auth/signup`: Validates email and password (min 8 chars), creates local user, establishes session, sets cookie, returns 201 with safe user profile.
+  - `POST /api/auth/login`: Validates credentials, creates session, sets cookie, returns 200 with safe user profile. Timing-neutral error handling prevents account enumeration.
+  - `POST /api/auth/google`: Verifies Google ID token, upserts Google user, creates session, sets cookie, returns 200 with safe user profile.
+  - `POST /api/auth/logout`: Invalidates server-side session row in SQLite and clears cookie (`maxAge: 0`).
+  - `GET /api/auth/me`: Returns current authenticated user profile (`200 OK`) or structured `401 UNAUTHORIZED`.
+- [x] **CORS Configuration Update (`backend/index.js`)**:
+  - Configured explicit origins (`process.env.FRONTEND_ORIGIN || 'http://localhost:3000'`) with `credentials: true`. Removed wildcard `*` to allow cross-origin cookie sharing.
+- [x] **Environment Configuration**:
+  - Created `backend/.env.example` documenting `GOOGLE_CLIENT_ID`, `FRONTEND_ORIGIN`, `NODE_ENV`, and `SESSION_COOKIE_NAME`.
+- [x] **Comprehensive Test Suite (`backend/tests/authEndpoints.test.js`)**:
+  - Created 36 deterministic zero-dependency tests (Tests A through AJ) covering migrations, password hashing, sessions, signup, login, Google verification, /me, logout, and security sanitization.
+  - Added to `backend/package.json` test script.
+- [x] **Explicit Scope Boundaries Maintained**:
+  - Plan ownership and claiming were NOT implemented yet (deferred to Chunk 4.3).
+  - Frontend authentication UX and AuthContext were NOT implemented yet (deferred to Chunk 4.4).
+  - All 13 existing Phase 3 test suites continue to pass with 0 regressions.
 
 ---
 
 ## 8. Next Planned Phase & Chunk
 
 **Phase 4: Authentication & Multi-User Plan Architecture**
-- **Chunk 4.2 — Database Migration 002, User Model & Core Backend Auth Endpoints**:
-  - Execute migration `002_add_user_id_to_plans.sql`.
-  - Implement `userService.js` and `authService.js` (password hashing with Node `crypto.scrypt`, Google token verification with `google-auth-library`).
-  - Implement session management with secure HTTP-only cookies.
-  - Register `/api/auth/google`, `/api/auth/signup`, `/api/auth/login`, `/api/auth/logout`, and `/api/auth/me`.
-  - Verify with zero-dependency automated test suite.
+- **Chunk 4.3 — Plan Ownership, Multi-User Isolation & Plan Claiming API**:
+  - Scope `POST /api/plans`, `GET /api/plans`, `GET /api/plans/:id`, `PATCH /api/plans/:id`, and `DELETE /api/plans/:id` to `req.user.id`.
+  - Implement anonymous 1-trial gatekeeper in `trial_sessions`.
+  - Implement atomic trial plan claiming endpoint: `POST /api/plans/claim`.
+  - Verify multi-user isolation with automated tests.
 
 ---
 
@@ -171,8 +171,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 3.4: Plan Detail / Loading / Re-opening (Completed - `5c6d58f`)
   - Chunk 3.5: Update/Delete/Archive & Persistence Edge Cases (Completed - `c73a00a`)
 - **Phase 4: Authentication & Multi-User Plan Architecture (IN PROGRESS)**
-  - Chunk 4.1: Authentication & Anonymous Trial Architecture Audit (Completed)
-  - Chunk 4.2: Database Migration 002, User Model & Core Backend Auth Endpoints
+  - Chunk 4.1: Authentication & Anonymous Trial Architecture Audit (Completed - `632609e`)
+  - Chunk 4.2: Database Migration 002, User Model & Core Backend Auth Endpoints (Completed)
   - Chunk 4.3: Plan Ownership, Multi-User Isolation & Plan Claiming API
   - Chunk 4.4: Frontend Auth UX, Google Sign-In & Dashboard Claim Flow
 - **Phase 5: Pitch Deck Export & Sharing** (PDF / PowerPoint exports)
@@ -183,22 +183,35 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `c73a00ada2c4924b9beaa282cb9a8f6abf45f7a3` (feat: manage persisted plan lifecycle)
+- **Pre-Chunk Commit**: `632609eb11eb5aadc200ad44deb4d5b4d3b327df` (docs: define phase 4 authentication architecture)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
-- **Phase 3 Status**: COMPLETED (Chunks 3.1 through 3.5 all verified and committed)
-- **Phase 4 Status**: IN PROGRESS (Chunk 4.1 Completed)
+- **Phase 3 Status**: COMPLETED
+- **Phase 4 Status**: IN PROGRESS (Chunks 4.1 and 4.2 Completed)
 
 ---
-
 
 ## 11. Verification Log
 
 | Verification Check | Result | Details |
 |---|---|---|
-| **Backend Syntax** | PASS | All backend JS files checked with `node -c index.js controllers/*.js models/*.js routes/*.js services/*.js utils/*.js db/*.js tests/*.js`. |
+| **Backend Syntax** | PASS | All backend JS files checked with `node -c index.js controllers/*.js models/*.js routes/*.js services/*.js utils/*.js db/*.js middleware/*.js tests/*.js`. |
 | **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000 with `Database: Connected & Migrated ✅`. |
-| **Backend Test Suite (13 suites)** | PASS | `npm test` runs all 13 test files cleanly: `controllers.test.js`, `uspDataFlow.test.js`, `mvpStorage.test.js`, `frontendRoutes.test.js`, `e2eGenerationFlow.test.js`, `jsonParser.test.js`, `geminiClient.test.js`, `partialGeneration.test.js`, `persistence.test.js`, `frontendPersistenceIntegration.test.js`, `planHistory.test.js`, `reopenPlan.test.js`, `planLifecycle.test.js`. |
+| **Backend Test Suite (14 suites)** | PASS | `npm test` runs all 14 test files cleanly with 0 errors across 150+ assertions. |
+| **Auth Endpoints Test Suite** | PASS | `backend/tests/authEndpoints.test.js`: 36 comprehensive tests (A–AJ) covering migrations, scrypt hashing, timing-safe verification, session random tokens, 30-day expiry, signup, login, Google token verification, local account collision protection, /me, logout cookie clearing, and secret stripping. |
+| **Plan Lifecycle Test Suite** | PASS | `backend/tests/planLifecycle.test.js`: 17 comprehensive tests (A–Q) covering metadata updates, field preservation, empty name validation, timestamp management, module preservation, 404 handling, single plan deletion isolation, active session purging, non-active session protection, active session metadata synchronization, partial plan lifecycle, and HTTP controller contracts. |
+| **Plan Re-Opening & Hydration Suite** | PASS | `backend/tests/reopenPlan.test.js`: 15 comprehensive tests (A–O) covering URL query generation, plan ID extraction, full document retrieval, formData restoration, module restoration, partial plan error handling, currentPlanId synchronization, stale data cleanup between plans, 404 not-found handling, network failure error handling, direct dashboard session retention, generation regression, history regression, and full round-trip. |
+| **Plan History / My Plans Test Suite** | PASS | `backend/tests/planHistory.test.js`: 12 comprehensive tests covering empty database, lightweight summary metadata, newest-first ordering with tie-breaking, pagination limits/offsets, partial/failed status preservation, controller HTTP contracts, empty states, error handling/retry, pagination calculations, status badge mapping, and open plan routing contract. |
+| **Frontend Persistence Integration Suite** | PASS | `backend/tests/frontendPersistenceIntegration.test.js`: 9 test categories covering 6/6 and partial generation persistence, 0/6 abort, persistence failure recovery, stale key cleanup, 404 handling, complete round-trip, and double-submit protection. |
+| **Plan Persistence Test Suite** | PASS | `backend/tests/persistence.test.js`: 10 comprehensive tests verifying in-memory initialization, migrations, CRUD, deep nested JSON preservation, pagination, ordering, 404/400 errors, partial plan persistence, and test DB isolation. |
+| **Partial Generation & Error Suite** | PASS | `backend/tests/partialGeneration.test.js`: 14 tests verifying 200 raw success contracts, 400/429/503/500 error mapping, secret scrubbing, 6/6, 5/6, multiple failure, 0/6 flows, stale data purging, and dashboard null-safety. |
+| **Gemini Client & Retry Suite** | PASS | `backend/tests/geminiClient.test.js`: 13 test categories covering 429/503 retries, network recovery, fail-fast on 400/401/403, exponential backoff, jitter, limiter, and model integration. |
+| **Robust JSON Parser** | PASS | `backend/tests/jsonParser.test.js`: 9 test suites covering code blocks, conversational wrappers, unclosed fences, trailing commas, BOMs, error handling, and 6 model integrations. |
+| **USP Prompt Verification** | PASS | Tested all 6 models in `uspDataFlow.test.js`: prompt strings contain `data.usp` without undefined/fallback. |
+| **MVP Storage Verification** | PASS | `backend/tests/mvpStorage.test.js`: verifies complete MVP object retention, reproduces regression, and tests consumers + legacy fallback. |
+| **Frontend Routing Verification** | PASS | `backend/tests/frontendRoutes.test.js`: 100% of active `navigate()` calls map to canonical routes; verified `/my-plans` active canonical registration and reachability. |
+| **End-to-End Generation Flow** | PASS | `backend/tests/e2eGenerationFlow.test.js`: deterministic simulation of end-to-end chain from form input to Dashboard/PitchPreview consumption passes with 0 errors. |
+| **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.0139c39c.js`). |
 | **Plan Lifecycle Test Suite** | PASS | `backend/tests/planLifecycle.test.js`: 17 comprehensive tests (A–Q) covering metadata updates, field preservation, empty name validation, timestamp management, module preservation, 404 handling, single plan deletion isolation, active session purging, non-active session protection, active session metadata synchronization, partial plan lifecycle, and HTTP controller contracts. |
 | **Plan Re-Opening & Hydration Suite** | PASS | `backend/tests/reopenPlan.test.js`: 15 comprehensive tests (A–O) covering URL query generation, plan ID extraction, full document retrieval, formData restoration, module restoration, partial plan error handling, currentPlanId synchronization, stale data cleanup between plans, 404 not-found handling, network failure error handling, direct dashboard session retention, generation regression, history regression, and full round-trip. |
 | **Plan History / My Plans Test Suite** | PASS | `backend/tests/planHistory.test.js`: 12 comprehensive tests covering empty database, lightweight summary metadata, newest-first ordering with tie-breaking, pagination limits/offsets, partial/failed status preservation, controller HTTP contracts, empty states, error handling/retry, pagination calculations, status badge mapping, and open plan routing contract. |
