@@ -187,6 +187,8 @@ CREATE INDEX IF NOT EXISTS idx_plans_created_at ON plans(created_at DESC);
 | `POST` | `/api/plans` | Create and persist a startup plan | `201 Created` | `{ success: true, data: { id, startupName, ... } }` |
 | `GET` | `/api/plans` | List plans with pagination (`?limit=50&offset=0`) | `200 OK` | `{ success: true, data: { plans: [...], total, limit, offset } }` |
 | `GET` | `/api/plans/:id` | Retrieve single plan by UUID | `200 OK` / `404 Not Found` | `{ success: true, data: { id, ... } }` |
+| `PATCH` | `/api/plans/:id` | Update plan metadata fields | `200 OK` / `400 Bad Request` / `404 Not Found` | `{ success: true, data: { id, startupName, ... } }` |
+| `DELETE` | `/api/plans/:id` | Delete plan by UUID | `200 OK` / `404 Not Found` | `{ success: true, data: { id, deleted: true } }` |
 
 ---
 
@@ -364,6 +366,43 @@ Unrelated browser storage (such as `theme`) is left completely untouched.
 ### 7.6 Error & Not-Found Boundary
 - **404 Not Found**: If an invalid or deleted UUID is provided, `DashboardPage` catches the 404, clears any invalid `currentPlanId`, and renders a styled "Plan Not Found" screen with navigation CTAs back to `/my-plans` or `/start`.
 - **Network / Server Failure**: If the backend is unreachable or returns a 5xx error, a "Failed to Load Plan" screen is displayed with an interactive "Try Again" retry action and "Back to My Plans" CTA, without crashing the application or corrupting existing session data.
+
+---
+
+## 8. Plan Lifecycle Management: Update, Delete & Session Consistency (Chunk 3.5)
+
+### 8.1 Metadata Mutation (`PATCH /api/plans/:id`)
+- **Restricted Mutation Surface**: Allows editing of business metadata fields only: `startupName`, `industry`, `problem`, `solution`, `targetAudience`, and `usp`.
+- **Protection of AI Modules**: Primary key (`id`), creation timestamp (`created_at`), generation status (`generation_status`), error metadata (`generation_errors`), and all six generated JSON trees (`leanCanvas`, `mvp`, `revenue`, `pitch`, `personas`, `competitors`) are strictly immutable through the update endpoint.
+- **Validation**: Requires non-empty string for `startupName` if provided; returns structured HTTP 400 `INVALID_INPUT` on invalid or blank names.
+- **Timestamp Handling**: Updates `updated_at` to the current ISO-8601 UTC timestamp while preserving `created_at`.
+- **Response**: Returns the complete, updated plan document with full module trees.
+
+### 8.2 Safe Plan Deletion (`DELETE /api/plans/:id`)
+- **Single Plan Scoping**: Parameterized execution (`DELETE FROM plans WHERE id = ?`) ensures exact single-row deletion without cascade risks.
+- **Not-Found Handling**: Returns structured HTTP 404 `PLAN_NOT_FOUND` if the plan does not exist in the database.
+- **Response**: Returns `{ success: true, data: { id, deleted: true } }`.
+
+### 8.3 Active Session Invariants & LocalStorage Consistency
+To avoid leaving stale data in the browser working state after mutations, the following invariants are enforced:
+
+1. **Current-Plan Deletion**:
+   - If the user deletes the plan that is currently loaded in active session (`plan.id === localStorage.getItem('currentPlanId')`):
+     - All 10 plan-related localStorage keys are immediately wiped: `formData`, `leanCanvas`, `mvp`, `revenue`, `pitch`, `personas`, `competitors`, `generationErrors`, `currentPlanId`, `planPersistenceStatus`.
+     - The dashboard stops claiming the plan is "Saved to Database".
+     - When initiated from `DashboardPage`, safely navigates to `/my-plans`.
+2. **Non-Current-Plan Deletion**:
+   - Deleting any historical plan from `HistoryPage` that is not currently loaded preserves the active working session completely untouched.
+3. **Metadata Synchronization**:
+   - When an active plan is edited (from either `HistoryPage` or `DashboardPage`), `localStorage.formData` is synchronized with the new `name`, `domain`, `problem`, `solution`, `audience`, and `usp` values immediately.
+   - `currentPlanId` remains unchanged.
+4. **Deleted Plan Direct Re-opening**:
+   - Navigating to `/dashboard?plan=<deleted-UUID>` gracefully resolves to the "Plan Not Found" screen without application crashes.
+
+### 8.4 User Confirmation & Safety
+- **Accidental Deletion Prevention**: Deleting a plan from both `HistoryPage` and `DashboardPage` requires explicit confirmation through a styled modal dialog.
+- **Active Session Notice**: The deletion modal explicitly warns the user if the targeted plan is currently open in their active session.
+
 
 
 

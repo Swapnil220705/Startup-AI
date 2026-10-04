@@ -116,13 +116,59 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ---
 
+## 7.5 Current Completed Chunk: Chunk 3.5 — Update / Delete / Archive & Persistence Lifecycle
+
+- [x] Backend Plan Update & Metadata Editing:
+  - Implemented `updatePlan(id, updates, db)` in `backend/services/planService.js`.
+  - Registered `PATCH /api/plans/:id` and controller `updatePlanController` in `backend/controllers/planController.js`.
+  - Restricted editable fields to core metadata (`startupName`, `industry`, `problem`, `solution`, `targetAudience`, `usp`).
+  - Protected AI-generated modules (`leanCanvas`, `mvp`, `revenue`, `pitch`, `personas`, `competitors`), `id`, and `created_at` from alteration.
+  - Validates `startupName` cannot be empty string or whitespace (returns HTTP 400 `INVALID_INPUT`).
+  - Updates `updated_at` timestamp with current ISO-8601 UTC time while preserving `created_at`.
+  - Structured 404 response if plan ID is not found in database.
+- [x] Backend Plan Deletion:
+  - Implemented `deletePlan(id, db)` in `backend/services/planService.js`.
+  - Registered `DELETE /api/plans/:id` and controller `deletePlanController` in `backend/controllers/planController.js`.
+  - Uses parameterized queries (`DELETE FROM plans WHERE id = ?`).
+  - Returns `{ success: true, data: { id, deleted: true } }` on success.
+  - Structured 404 response if plan does not exist.
+- [x] Safe Active Session Synchronization:
+  - Current-Plan Deletion: Deleting the currently open plan purges all 10 plan-related localStorage keys (`formData`, `leanCanvas`, `mvp`, `revenue`, `pitch`, `personas`, `competitors`, `generationErrors`, `currentPlanId`, `planPersistenceStatus`).
+  - Non-Current-Plan Deletion: Deleting any other saved plan leaves the active working session completely untouched.
+  - Metadata Update Synchronization: When the currently active plan is updated, `localStorage.formData` is synchronized with the new metadata values immediately.
+- [x] Frontend Lifecycle Management in `HistoryPage.js`:
+  - Added "Edit" action button opening a focused metadata editing modal.
+  - Added "Delete" action button opening an explicit confirmation modal with warning if the plan is currently loaded in active session.
+  - Added feedback notifications for edit and delete actions.
+  - Automatically handles pagination boundaries when deleting the last item on a page.
+- [x] Frontend Lifecycle Management in `DashboardPage.js`:
+  - Added "Edit" and "Delete" action buttons in the hero section for saved plans.
+  - Deleting the active plan from Dashboard clears localStorage and safely navigates to `/my-plans`.
+  - Editing plan details from Dashboard updates both database and local overview in real time.
+- [x] Created comprehensive test suite in `backend/tests/planLifecycle.test.js` (17 tests, Tests A through Q):
+  - Test A & B: PATCH updates metadata and preserves unspecified fields.
+  - Test C: PATCH rejects invalid/empty startupName (400 INVALID_INPUT).
+  - Test D & E: Timestamp handling (`updatedAt` advances, `createdAt` preserved).
+  - Test F: PATCH preserves all 6 generated modules.
+  - Test G: PATCH on non-existent plan ID returns 404.
+  - Test H, J, K & L: DELETE single plan isolation (deletes target plan without affecting others).
+  - Test I: DELETE non-existent plan ID returns 404.
+  - Test M: Current-plan deletion purges active localStorage session.
+  - Test N: Non-current-plan deletion preserves active session.
+  - Test O: Metadata update synchronization into active localStorage.
+  - Test P: Partial plan lifecycle (list, update, delete without error).
+  - Test Q: HTTP controller contracts for PATCH and DELETE.
+- [x] Updated `backend/package.json` test script to include `planLifecycle.test.js`.
+- [x] Full regression verification: all 13 backend test suites pass with 0 errors, backend syntax check passes, and frontend production build succeeds cleanly.
+
+---
+
 ## 8. Next Planned Phase & Chunk
 
-**Phase 3: Backend Database Persistence**
-- **Chunk 3.5 — Update/Delete/Archive & Persistence Edge Cases**:
-  - Add backend endpoints and repository methods for plan deletion (`DELETE /api/plans/:id`) and updates.
-  - Add delete confirmation and removal actions in My Plans and Dashboard.
-  - Handle persistence edge cases and storage cleanups.
+**Phase 4: Pitch Deck Export & Sharing**
+- **Chunk 4.1 — Pitch Deck PDF & Slide Export**:
+  - Export pitch deck to formatted PDF document / presentation slides.
+  - Client-side or backend export pipeline.
 
 ---
 
@@ -139,12 +185,12 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 2.1: Robust Gemini JSON Parsing (Completed - `e0d7f83`)
   - Chunk 2.2: Rate Limiting & Retry/Backoff Strategy (Completed - `e87a12f`)
   - Chunk 2.3: Clean API / Partial Generation Errors (Completed - `52ecf78`)
-- **Phase 3: Backend Database Persistence (IN PROGRESS)**
+- **Phase 3: Backend Database Persistence (COMPLETED - Commit `5c6d58f`)**
   - Chunk 3.1: Persistence Architecture & Database Foundation (Completed - `f68b6a4`)
   - Chunk 3.2: Connect Frontend Generation Flow to Persistence API (Completed - `d50406a`)
   - Chunk 3.3: Plan History / My Plans (Completed - `04eed8f`)
-  - Chunk 3.4: Plan Detail / Loading / Re-opening (Completed)
-  - Chunk 3.5: Update/Delete/Archive & Persistence Edge Cases (Next)
+  - Chunk 3.4: Plan Detail / Loading / Re-opening (Completed - `5c6d58f`)
+  - Chunk 3.5: Update/Delete/Archive & Persistence Edge Cases (Completed)
 - **Phase 4: Pitch Deck Export & Sharing** (PDF / PowerPoint exports)
 - **Phase 5: Production Hardening, Test Suite Modernization & CI/CD**
 
@@ -153,12 +199,13 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `04eed8f` (Milestone Chunk 3.3)
+- **Pre-Chunk Commit**: `5c6d58f` (Milestone Chunk 3.4)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
-- **Phase 3 Status**: IN PROGRESS (Chunks 3.1, 3.2, 3.3, 3.4 Completed)
+- **Phase 3 Status**: COMPLETED (Chunks 3.1, 3.2, 3.3, 3.4, 3.5 Completed)
 
 ---
+
 
 ## 11. Verification Log
 
@@ -166,7 +213,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 |---|---|---|
 | **Backend Syntax** | PASS | All backend JS files checked with `node -c index.js controllers/*.js models/*.js routes/*.js services/*.js utils/*.js db/*.js tests/*.js`. |
 | **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000 with `Database: Connected & Migrated ✅`. |
-| **Backend Test Suite (12 suites)** | PASS | `npm test` runs all 12 test files cleanly: `controllers.test.js`, `uspDataFlow.test.js`, `mvpStorage.test.js`, `frontendRoutes.test.js`, `e2eGenerationFlow.test.js`, `jsonParser.test.js`, `geminiClient.test.js`, `partialGeneration.test.js`, `persistence.test.js`, `frontendPersistenceIntegration.test.js`, `planHistory.test.js`, `reopenPlan.test.js`. |
+| **Backend Test Suite (13 suites)** | PASS | `npm test` runs all 13 test files cleanly: `controllers.test.js`, `uspDataFlow.test.js`, `mvpStorage.test.js`, `frontendRoutes.test.js`, `e2eGenerationFlow.test.js`, `jsonParser.test.js`, `geminiClient.test.js`, `partialGeneration.test.js`, `persistence.test.js`, `frontendPersistenceIntegration.test.js`, `planHistory.test.js`, `reopenPlan.test.js`, `planLifecycle.test.js`. |
+| **Plan Lifecycle Test Suite** | PASS | `backend/tests/planLifecycle.test.js`: 17 comprehensive tests (A–Q) covering metadata updates, field preservation, empty name validation, timestamp management, module preservation, 404 handling, single plan deletion isolation, active session purging, non-active session protection, active session metadata synchronization, partial plan lifecycle, and HTTP controller contracts. |
 | **Plan Re-Opening & Hydration Suite** | PASS | `backend/tests/reopenPlan.test.js`: 15 comprehensive tests (A–O) covering URL query generation, plan ID extraction, full document retrieval, formData restoration, module restoration, partial plan error handling, currentPlanId synchronization, stale data cleanup between plans, 404 not-found handling, network failure error handling, direct dashboard session retention, generation regression, history regression, and full round-trip. |
 | **Plan History / My Plans Test Suite** | PASS | `backend/tests/planHistory.test.js`: 12 comprehensive tests covering empty database, lightweight summary metadata, newest-first ordering with tie-breaking, pagination limits/offsets, partial/failed status preservation, controller HTTP contracts, empty states, error handling/retry, pagination calculations, status badge mapping, and open plan routing contract. |
 | **Frontend Persistence Integration Suite** | PASS | `backend/tests/frontendPersistenceIntegration.test.js`: 9 test categories covering 6/6 and partial generation persistence, 0/6 abort, persistence failure recovery, stale key cleanup, 404 handling, complete round-trip, and double-submit protection. |
@@ -178,7 +226,7 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 | **MVP Storage Verification** | PASS | `backend/tests/mvpStorage.test.js`: verifies complete MVP object retention, reproduces regression, and tests consumers + legacy fallback. |
 | **Frontend Routing Verification** | PASS | `backend/tests/frontendRoutes.test.js`: 100% of active `navigate()` calls map to canonical routes; verified `/my-plans` active canonical registration and reachability. |
 | **End-to-End Generation Flow** | PASS | `backend/tests/e2eGenerationFlow.test.js`: deterministic simulation of end-to-end chain from form input to Dashboard/PitchPreview consumption passes with 0 errors. |
-| **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.9e09c826.js`). |
+| **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.0139c39c.js`). |
 
 
 ---

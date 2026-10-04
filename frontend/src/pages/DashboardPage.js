@@ -11,7 +11,10 @@ import {
   TrendingUp,
   CheckCircle2,
   AlertTriangle,
-  RefreshCw
+  RefreshCw,
+  Edit3,
+  Trash2,
+  X
 } from 'lucide-react';
 import axios from 'axios';
 import Header from '../components/Header';
@@ -35,6 +38,25 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
   const [generationErrors, setGenerationErrors] = useState(null);
   const [currentPlanId, setCurrentPlanId] = useState(null);
   const [persistenceStatus, setPersistenceStatus] = useState('not_saved');
+
+  // Edit / Delete lifecycle states
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
+  const [editForm, setEditForm] = useState({
+    startupName: '',
+    industry: '',
+    problem: '',
+    solution: '',
+    targetAudience: '',
+    usp: ''
+  });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState(null);
+  const [actionFeedback, setActionFeedback] = useState(null);
+
 
   // Load a historical plan by its server UUID
   const loadPlanById = useCallback(async (planId) => {
@@ -215,7 +237,124 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
     }
   }, [currentPath, loadPlanById, loadFromLocalStorage]);
 
+  const handleStartEditDetails = () => {
+    if (!data?.overview) return;
+    setEditForm({
+      startupName: data.overview.name || '',
+      industry: data.overview.industry || '',
+      problem: data.overview.problem || '',
+      solution: data.overview.solution || '',
+      targetAudience: data.overview.audience || '',
+      usp: data.overview.usp || ''
+    });
+    setEditError(null);
+    setIsEditingDetails(true);
+  };
+
+  const handleSaveDetails = async (e) => {
+    if (e) e.preventDefault();
+    if (!currentPlanId) return;
+
+    if (!editForm.startupName.trim()) {
+      setEditError('Startup Name is required.');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setEditError(null);
+
+    try {
+      const res = await axios.patch(`http://localhost:4000/api/plans/${currentPlanId}`, {
+        startupName: editForm.startupName.trim(),
+        industry: editForm.industry.trim(),
+        problem: editForm.problem.trim(),
+        solution: editForm.solution.trim(),
+        targetAudience: editForm.targetAudience.trim(),
+        usp: editForm.usp.trim()
+      });
+
+      if (res.data?.success && res.data?.data) {
+        const updated = res.data.data;
+
+        // Update localStorage.formData
+        const currentFormData = JSON.parse(localStorage.getItem('formData') || '{}');
+        const updatedFormData = {
+          ...currentFormData,
+          name: updated.startupName,
+          domain: updated.industry,
+          problem: updated.problem,
+          solution: updated.solution,
+          audience: updated.targetAudience,
+          usp: updated.usp
+        };
+        localStorage.setItem('formData', JSON.stringify(updatedFormData));
+
+        // Update component data state
+        setData(prev => ({
+          ...prev,
+          overview: {
+            ...prev.overview,
+            name: updated.startupName,
+            industry: updated.industry,
+            problem: updated.problem,
+            solution: updated.solution,
+            audience: updated.targetAudience,
+            usp: updated.usp
+          }
+        }));
+
+        setIsEditingDetails(false);
+        setActionFeedback({ type: 'success', message: 'Startup plan details updated successfully.' });
+        setTimeout(() => setActionFeedback(null), 4000);
+      } else {
+        throw new Error('Unexpected response format');
+      }
+    } catch (err) {
+      console.error('[Dashboard] Error updating plan details:', err.message);
+      setEditError(err.response?.data?.error?.message || 'Failed to update plan. Please try again.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleConfirmDeletePlan = async () => {
+    if (!currentPlanId) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const res = await axios.delete(`http://localhost:4000/api/plans/${currentPlanId}`);
+      if (res.data?.success) {
+        // Clear active session keys
+        const PLAN_STORAGE_KEYS = [
+          'formData',
+          'leanCanvas',
+          'mvp',
+          'revenue',
+          'pitch',
+          'personas',
+          'competitors',
+          'generationErrors',
+          'currentPlanId',
+          'planPersistenceStatus'
+        ];
+        PLAN_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
+
+        setIsConfirmingDelete(false);
+        navigate('/my-plans');
+      } else {
+        throw new Error('Unexpected response format');
+      }
+    } catch (err) {
+      console.error('[Dashboard] Error deleting plan:', err.message);
+      setDeleteError(err.response?.data?.error?.message || 'Failed to delete plan. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const tabs = [
+
     { id: 'overview', label: 'Overview', icon: <Globe className="w-5 h-5" />, gradient: 'from-blue-500 to-cyan-500' },
     { id: 'canvas', label: 'Lean Canvas', icon: <Target className="w-5 h-5" />, gradient: 'from-indigo-500 to-purple-500' },
     { id: 'mvp', label: 'MVP Plan', icon: <Zap className="w-5 h-5" />, gradient: 'from-yellow-500 to-orange-500' },
@@ -397,6 +536,33 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
                       <span>Saved to Database</span>
                     </div>
                   )}
+                  {persistenceStatus === 'saved' && currentPlanId && (
+                    <div className="inline-flex items-center space-x-2">
+                      <button
+                        onClick={handleStartEditDetails}
+                        className={`inline-flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                          isDark ? 'border-gray-700 bg-gray-800/80 text-gray-300 hover:bg-gray-700 hover:text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                        }`}
+                        title="Edit plan details"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsConfirmingDelete(true);
+                          setDeleteError(null);
+                        }}
+                        className={`inline-flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                          isDark ? 'border-rose-900/60 bg-rose-950/40 text-rose-300 hover:bg-rose-900/60' : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                        }`}
+                        title="Delete saved plan"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  )}
                   {persistenceStatus === 'save_failed' && (
                     <div className={`inline-flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-semibold ${isDark ? 'bg-amber-900/30 text-amber-400 border border-amber-800' : 'bg-amber-100 text-amber-800 border border-amber-200'}`}>
                       <AlertTriangle className="w-4 h-4 text-amber-500" />
@@ -404,6 +570,23 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
                     </div>
                   )}
                 </div>
+
+                {actionFeedback && (
+                  <div className={`p-3 rounded-xl mb-4 flex items-center justify-between text-xs font-medium ${
+                    actionFeedback.type === 'success'
+                      ? isDark ? 'bg-emerald-950/40 border border-emerald-800 text-emerald-300' : 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                      : isDark ? 'bg-rose-950/40 border border-rose-800 text-rose-300' : 'bg-rose-50 border border-rose-200 text-rose-800'
+                  }`}>
+                    <div className="flex items-center space-x-2">
+                      <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                      <span>{actionFeedback.message}</span>
+                    </div>
+                    <button onClick={() => setActionFeedback(null)} className="p-1 hover:opacity-75">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
                 <h1 className="text-4xl md:text-5xl font-bold mb-4">
                   <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
                     {data.overview.name}
@@ -413,6 +596,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
                     Business Plan Dashboard
                   </span>
                 </h1>
+
                 <p className={`text-lg ${isDark ? 'text-gray-400' : 'text-gray-600'} max-w-2xl`}>
                   AI-powered insights and comprehensive analysis for your startup journey
                 </p>
@@ -583,8 +767,227 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {isConfirmingDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className={`w-full max-w-md p-6 rounded-2xl border shadow-2xl ${
+            isDark ? 'bg-gray-800 border-gray-700 text-gray-100' : 'bg-white border-gray-200 text-gray-900'
+          }`}>
+            <div className="flex items-start space-x-3 mb-4">
+              <div className={`p-2 rounded-xl flex-shrink-0 ${
+                isDark ? 'bg-rose-950/50 text-rose-400' : 'bg-rose-100 text-rose-600'
+              }`}>
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold">Delete This Startup Plan?</h3>
+                <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Are you sure you want to delete <span className="font-semibold text-indigo-500">"{data.overview.name}"</span>? This will permanently delete the plan from the database and clear your active session.
+                </p>
+              </div>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 rounded-xl text-xs mb-4 bg-rose-50 border border-rose-200 text-rose-800 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-300">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end space-x-3 mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsConfirmingDelete(false);
+                  setDeleteError(null);
+                }}
+                disabled={isDeleting}
+                className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                  isDark ? 'border-gray-700 hover:bg-gray-700 text-gray-300' : 'border-gray-300 hover:bg-gray-100 text-gray-700'
+                }`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeletePlan}
+                disabled={isDeleting}
+                className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-md hover:shadow-lg transition-all"
+              >
+                {isDeleting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Delete Plan</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Metadata Modal */}
+      {isEditingDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className={`w-full max-w-lg p-6 rounded-2xl border shadow-2xl my-8 ${
+            isDark ? 'bg-gray-800 border-gray-700 text-gray-100' : 'bg-white border-gray-200 text-gray-900'
+          }`}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-2">
+                <div className={`p-2 rounded-xl ${isDark ? 'bg-indigo-950/50 text-indigo-400' : 'bg-indigo-100 text-indigo-600'}`}>
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-bold">Edit Startup Plan Details</h3>
+              </div>
+              <button
+                onClick={() => setIsEditingDetails(false)}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  isDark ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'
+                }`}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className={`text-xs mb-4 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              Update core startup metadata. Generated AI modules (Lean Canvas, MVP, Pitch) remain unchanged.
+            </p>
+
+            {editError && (
+              <div className="p-3 rounded-xl text-xs mb-4 bg-rose-50 border border-rose-200 text-rose-800 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-300">
+                {editError}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveDetails} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider mb-1">
+                  Startup Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.startupName}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, startupName: e.target.value }))}
+                  className={`w-full px-3 py-2 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                    isDark ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
+                  }`}
+                  placeholder="Startup Name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider mb-1">
+                  Industry / Domain
+                </label>
+                <input
+                  type="text"
+                  value={editForm.industry}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, industry: e.target.value }))}
+                  className={`w-full px-3 py-2 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                    isDark ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
+                  }`}
+                  placeholder="e.g. FinTech, HealthTech, B2B SaaS"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider mb-1">
+                  Problem Statement
+                </label>
+                <textarea
+                  rows={3}
+                  value={editForm.problem}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, problem: e.target.value }))}
+                  className={`w-full px-3 py-2 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                    isDark ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
+                  }`}
+                  placeholder="What problem does this startup solve?"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider mb-1">
+                  Solution
+                </label>
+                <textarea
+                  rows={3}
+                  value={editForm.solution}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, solution: e.target.value }))}
+                  className={`w-full px-3 py-2 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                    isDark ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
+                  }`}
+                  placeholder="How does your product solve the problem?"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider mb-1">
+                  Target Audience
+                </label>
+                <input
+                  type="text"
+                  value={editForm.targetAudience}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, targetAudience: e.target.value }))}
+                  className={`w-full px-3 py-2 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                    isDark ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
+                  }`}
+                  placeholder="e.g. Remote product teams, College students"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider mb-1">
+                  Unique Selling Proposition (USP)
+                </label>
+                <input
+                  type="text"
+                  value={editForm.usp}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, usp: e.target.value }))}
+                  className={`w-full px-3 py-2 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                    isDark ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
+                  }`}
+                  placeholder="Key differentiator"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingDetails(false)}
+                  disabled={isSavingEdit}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                    isDark ? 'border-gray-700 hover:bg-gray-700 text-gray-300' : 'border-gray-300 hover:bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit}
+                  className="inline-flex items-center space-x-2 px-5 py-2 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md hover:shadow-lg transition-all"
+                >
+                  {isSavingEdit ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export default DashboardPage;
+export default DashboardPage;

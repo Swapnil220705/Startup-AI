@@ -1,5 +1,5 @@
 // backend/controllers/planController.js
-const { createPlan, getPlanById, listPlans } = require('../services/planService');
+const { createPlan, getPlanById, listPlans, updatePlan, deletePlan } = require('../services/planService');
 const { sendApiError } = require('../utils/apiError');
 
 /**
@@ -118,8 +118,126 @@ async function listPlansController(req, res) {
   }
 }
 
+/**
+ * Controller to update metadata of an existing startup plan.
+ * PATCH /api/plans/:id
+ */
+async function updatePlanController(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (!id || typeof id !== 'string' || !id.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'Plan ID is required.'
+        }
+      });
+    }
+
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'Request body must be a valid object.'
+        }
+      });
+    }
+
+    const updatedPlan = updatePlan(id.trim(), req.body);
+
+    if (!updatedPlan) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'PLAN_NOT_FOUND',
+          message: `Plan not found with id: ${id}`
+        }
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: updatedPlan
+    });
+  } catch (error) {
+    console.error('Update Plan Error:', error.message);
+    if (error.statusCode === 400 || error.code === 'INVALID_INPUT') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: error.message || 'Invalid update data.'
+        }
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'PERSISTENCE_FAILED',
+        message: 'Failed to update startup plan in database.'
+      }
+    });
+  }
+}
+
+/**
+ * Controller to delete a startup plan by its ID.
+ * DELETE /api/plans/:id
+ */
+async function deletePlanController(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (!id || typeof id !== 'string' || !id.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'Plan ID is required.'
+        }
+      });
+    }
+
+    const deleted = deletePlan(id.trim());
+
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'PLAN_NOT_FOUND',
+          message: `Plan not found with id: ${id}`
+        }
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: id.trim(),
+        deleted: true
+      }
+    });
+  } catch (error) {
+    console.error('Delete Plan Error:', error.message);
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'PERSISTENCE_FAILED',
+        message: 'Failed to delete startup plan from database.'
+      }
+    });
+  }
+}
+
 module.exports = {
   createPlanController,
   getPlanByIdController,
-  listPlansController
+  listPlansController,
+  updatePlanController,
+  deletePlanController
 };
+

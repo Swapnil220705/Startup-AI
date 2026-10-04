@@ -271,12 +271,107 @@ function listPlans(options = {}, db = null) {
   };
 }
 
+/**
+ * Updates editable metadata of an existing startup plan.
+ * 
+ * @param {string} id - Plan UUID
+ * @param {object} updates - Metadata fields to update (startupName, industry, problem, solution, targetAudience, usp)
+ * @param {object} [db] - Optional Database instance
+ * @returns {object|null} The updated plan object or null if not found
+ */
+function updatePlan(id, updates = {}, db = null) {
+  if (!id || typeof id !== 'string') {
+    return null;
+  }
+
+  if (!updates || typeof updates !== 'object') {
+    const error = new Error('Updates must be a valid object');
+    error.statusCode = 400;
+    error.code = 'INVALID_INPUT';
+    throw error;
+  }
+
+  const dbInstance = db || getDatabase();
+
+  // Verify plan exists
+  const existing = dbInstance.prepare('SELECT id FROM plans WHERE id = ?').get(id);
+  if (!existing) {
+    return null;
+  }
+
+  // Validate startupName if supplied
+  if (updates.startupName !== undefined) {
+    if (typeof updates.startupName !== 'string' || !updates.startupName.trim()) {
+      const error = new Error('Invalid input: startupName cannot be empty.');
+      error.statusCode = 400;
+      error.code = 'INVALID_INPUT';
+      throw error;
+    }
+  }
+
+  const allowedFields = {
+    startupName: 'startup_name',
+    industry: 'industry',
+    problem: 'problem',
+    solution: 'solution',
+    targetAudience: 'target_audience',
+    usp: 'usp'
+  };
+
+  const setClauses = [];
+  const params = { id, updated_at: new Date().toISOString() };
+
+  for (const [key, col] of Object.entries(allowedFields)) {
+    if (updates[key] !== undefined) {
+      setClauses.push(`${col} = @${col}`);
+      params[col] = updates[key] === null ? null : String(updates[key]).trim();
+    }
+  }
+
+  setClauses.push('updated_at = @updated_at');
+
+  const sql = `UPDATE plans SET ${setClauses.join(', ')} WHERE id = @id`;
+
+  try {
+    dbInstance.prepare(sql).run(params);
+  } catch (err) {
+    const dbError = new Error('Failed to update plan in database');
+    dbError.statusCode = 500;
+    dbError.code = 'DATABASE_ERROR';
+    throw dbError;
+  }
+
+  return getPlanById(id, dbInstance);
+}
+
+/**
+ * Deletes a startup plan by its ID.
+ * 
+ * @param {string} id - Plan UUID
+ * @param {object} [db] - Optional Database instance
+ * @returns {boolean} True if deleted, false if not found
+ */
+function deletePlan(id, db = null) {
+  if (!id || typeof id !== 'string') {
+    return false;
+  }
+
+  const dbInstance = db || getDatabase();
+  const stmt = dbInstance.prepare('DELETE FROM plans WHERE id = ?');
+  const result = stmt.run(id);
+
+  return result.changes > 0;
+}
+
 module.exports = {
   createPlan,
   getPlanById,
   listPlans,
+  updatePlan,
+  deletePlan,
   formatPlanRow,
   deriveGenerationStatus,
   safeJsonStringify,
   safeJsonParse
 };
+
