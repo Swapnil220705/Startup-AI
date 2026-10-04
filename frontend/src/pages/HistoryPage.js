@@ -69,9 +69,12 @@ const HistoryPage = ({ navigate, isDark, toggleTheme }) => {
   };
 
   const handleOpenPlan = (plan) => {
-    // Chunk 3.3: Establishes navigation path toward opening a plan
-    // Full arbitrary-plan loading & dashboard hydration is scheduled for Chunk 3.4
-    navigate('/dashboard');
+    // Chunk 3.4: Reopening persisted plan carries server-generated plan ID
+    if (plan && plan.id) {
+      navigate(`/dashboard?plan=${encodeURIComponent(plan.id)}`);
+    } else {
+      navigate('/dashboard');
+    }
   };
 
   const formatDate = (isoString) => {

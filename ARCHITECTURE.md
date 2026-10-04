@@ -270,9 +270,100 @@ Settled Results Evaluation
    - `partial`: Amber pill with `AlertTriangle`
    - `failed`: Rose pill with `XCircle`
 
-### 6.5 Plan Selection & Chunk 3.4 Boundary
-- **Current Role**: Chunk 3.3 is strictly focused on **history browsing and summary inspection**.
-- **Open Plan Action**: The "Open Plan" button establishes the navigation path (`navigate('/dashboard')`).
-- **Deferred to Chunk 3.4**: Arbitrary plan loading, full-plan detail retrieval (`GET /api/plans/:id`), populating the active dashboard, syncing `currentPlanId`, and reopening past plans belong to Chunk 3.4. LocalStorage remains the current-session rendering source in this chunk.
+### 6.5 Plan Selection (Chunk 3.3 & Chunk 3.4)
+- **History Browsing**: Displays saved plan cards with status badges and timestamps.
+- **Open Plan Action**: Navigates to `/dashboard?plan=<UUID>` passing the selected plan's server-generated ID as a URL query parameter.
+
+---
+
+## 7. Plan Re-Opening & Hydration Architecture (Chunk 3.4)
+
+### 7.1 Re-Opening Flow Overview
+
+```text
+User clicks "Open Plan" on HistoryPage (/my-plans)
+                     │
+                     ▼
+      navigate('/dashboard?plan=<UUID>')
+                     │
+                     ▼
+Router captures pathname + search; App.js resolves route to '/dashboard'
+                     │
+                     ▼
+DashboardPage detects `plan` query parameter in currentPath
+                     │
+         ┌───────────┴───────────┐
+         │                       │
+   [plan query present]    [no query param]
+         │                       │
+         ▼                       ▼
+  GET /api/plans/:id       loadFromLocalStorage()
+         │                 (Direct /dashboard navigation:
+         │                  preserves active session state)
+    ┌────┴───────────────────────────┐
+    │                                │
+    ▼                                ▼
+[HTTP 200 OK]             [HTTP 404 / Network Error]
+    │                                │
+    │ 1. Stale-State Purge           ├─► 404: "Plan Not Found" screen with CTAs to /my-plans & /start
+    │    (clears 10 plan keys)       └─► 5xx/Network: "Failed to Load Plan" error screen with Retry
+    │
+    │ 2. Restore formData
+    │    (name, domain, problem, solution, audience, usp)
+    │
+    │ 3. Restore Generated Modules
+    │    (leanCanvas, mvp, revenue, pitch, personas, competitors)
+    │
+    │ 4. Restore generationErrors (if partial plan)
+    │
+    │ 5. Set currentPlanId = serverId
+    │    Set planPersistenceStatus = 'saved'
+    │
+    ▼
+Render Dashboard with restored state & green "Saved to Database" badge
+```
+
+### 7.2 Router & Navigation Mechanism
+- **Lightweight History API Integration**: `frontend/src/utils/Router.js` preserves query parameters by tracking `window.location.pathname + window.location.search` in `currentPath`.
+- **Base Route Matching**: `frontend/src/App.js` splits `currentPath` on `?` (`const basePath = (currentPath || '').split('?')[0];`), allowing canonical routes such as `/dashboard` to resolve correctly while passing the complete `currentPath` prop down to page components.
+- **Zero URL Bloat**: Uses standard query string `/dashboard?plan=<UUID>`. Direct `/dashboard` visits without query parameters remain 100% backward-compatible.
+
+### 7.3 Stale Data Isolation & Key Lifecycle
+Before writing historical plan data into active storage, `DashboardPage` cleanses all previous plan data to prevent partial plans from inheriting modules of previously viewed complete plans.
+
+**Purged and Restored Keys**:
+1. `formData`: Restored to canonical frontend shape:
+   - `startupName` → `formData.name`
+   - `industry` → `formData.domain`
+   - `problem` → `formData.problem`
+   - `solution` → `formData.solution`
+   - `targetAudience` → `formData.audience`
+   - `usp` → `formData.usp`
+2. `leanCanvas`: JSON object (or null)
+3. `mvp`: JSON object (or null)
+4. `revenue`: JSON object (or null)
+5. `pitch`: JSON object (or null)
+6. `personas`: JSON object (or null)
+7. `competitors`: JSON object (or null)
+8. `generationErrors`: Error metadata array (or null if completed)
+9. `currentPlanId`: Restored to `plan.id` (server-generated UUID)
+10. `planPersistenceStatus`: Restored to `'saved'`
+
+Unrelated browser storage (such as `theme`) is left completely untouched.
+
+### 7.4 Why `localStorage` Remains the Dashboard State Layer
+1. **Zero UI Rewrite**: Dashboard tab components and `PitchPreviewPage` read synchronously from `localStorage`. Hydrating `localStorage` upon reopening allows all existing visualizer components to function without introducing complex asynchronous fetching into every tab.
+2. **Offline Resilience**: Once re-opened, navigating between Dashboard tabs and Pitch Preview requires zero subsequent network calls.
+3. **Clear Transition Path**: Maintains a clean boundary where the SQLite database is the persistent system of record and `localStorage` is the active working memory.
+
+### 7.5 Partial Plan Handling
+- When re-opening a plan with `generationStatus = 'partial'`, successful modules are restored to their respective keys, while failed modules remain `null`.
+- `generationErrors` is written to `localStorage.generationErrors`.
+- The existing partial generation banner and defensive tab fallback cards in `DashboardTabs.js` render seamlessly without modification.
+
+### 7.6 Error & Not-Found Boundary
+- **404 Not Found**: If an invalid or deleted UUID is provided, `DashboardPage` catches the 404, clears any invalid `currentPlanId`, and renders a styled "Plan Not Found" screen with navigation CTAs back to `/my-plans` or `/start`.
+- **Network / Server Failure**: If the backend is unreachable or returns a 5xx error, a "Failed to Load Plan" screen is displayed with an interactive "Try Again" retry action and "Back to My Plans" CTA, without crashing the application or corrupting existing session data.
+
 
 

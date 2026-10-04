@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 export const Router = ({ children }) => {
-  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  const [currentPath, setCurrentPath] = useState(window.location.pathname + window.location.search);
   
   const navigate = (path) => {
     window.history.pushState({}, '', path);
@@ -10,12 +10,12 @@ export const Router = ({ children }) => {
 
   useEffect(() => {
     const handlePopState = () => {
-      setCurrentPath(window.location.pathname);
+      setCurrentPath(window.location.pathname + window.location.search);
     };
 
     window.addEventListener('popstate', handlePopState);
 
-    setCurrentPath(window.location.pathname);
+    setCurrentPath(window.location.pathname + window.location.search);
 
     return () => {
       window.removeEventListener('popstate', handlePopState);

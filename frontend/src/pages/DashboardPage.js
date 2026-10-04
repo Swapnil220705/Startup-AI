@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Globe, 
   Target, 
@@ -10,7 +10,8 @@ import {
   Sparkles,
   TrendingUp,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import axios from 'axios';
 import Header from '../components/Header';
@@ -24,17 +25,114 @@ import {
   ExportTab
 } from '../components/DashboardTabs';
 
-const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
+const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [notFound, setNotFound] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [generationErrors, setGenerationErrors] = useState(null);
   const [currentPlanId, setCurrentPlanId] = useState(null);
   const [persistenceStatus, setPersistenceStatus] = useState('not_saved');
 
-  useEffect(() => {
+  // Load a historical plan by its server UUID
+  const loadPlanById = useCallback(async (planId) => {
+    setLoading(true);
+    setLoadError(null);
+    setNotFound(false);
+
     try {
+      const res = await axios.get(`http://localhost:4000/api/plans/${planId}`);
+      if (res.data?.success && res.data?.data) {
+        const plan = res.data.data;
+
+        // 1. Purge stale plan data from localStorage
+        const PLAN_STORAGE_KEYS = [
+          'formData',
+          'leanCanvas',
+          'mvp',
+          'revenue',
+          'pitch',
+          'personas',
+          'competitors',
+          'generationErrors',
+          'currentPlanId',
+          'planPersistenceStatus'
+        ];
+        PLAN_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
+
+        // 2. Restore formData in exact frontend shape
+        const restoredFormData = {
+          name: plan.startupName || '',
+          domain: plan.industry || '',
+          problem: plan.problem || '',
+          solution: plan.solution || '',
+          audience: plan.targetAudience || '',
+          usp: plan.usp || '',
+          summary: ''
+        };
+        localStorage.setItem('formData', JSON.stringify(restoredFormData));
+
+        // 3. Restore each available generated module (without fabricating missing data)
+        if (plan.leanCanvas) localStorage.setItem('leanCanvas', JSON.stringify(plan.leanCanvas));
+        if (plan.mvp) localStorage.setItem('mvp', JSON.stringify(plan.mvp));
+        if (plan.revenue) localStorage.setItem('revenue', JSON.stringify(plan.revenue));
+        if (plan.pitch) localStorage.setItem('pitch', JSON.stringify(plan.pitch));
+        if (plan.personas) localStorage.setItem('personas', JSON.stringify(plan.personas));
+        if (plan.competitors) localStorage.setItem('competitors', JSON.stringify(plan.competitors));
+        if (plan.generationErrors) localStorage.setItem('generationErrors', JSON.stringify(plan.generationErrors));
+
+        // 4. Restore persistence metadata
+        localStorage.setItem('currentPlanId', plan.id);
+        localStorage.setItem('planPersistenceStatus', 'saved');
+
+        // 5. Update component state
+        setCurrentPlanId(plan.id);
+        setPersistenceStatus('saved');
+        setGenerationErrors(plan.generationErrors || null);
+
+        const collectedData = {
+          overview: {
+            name: plan.startupName || plan.leanCanvas?.startupName || 'Your Startup',
+            industry: plan.industry || plan.leanCanvas?.industry || '',
+            problem: plan.problem || plan.leanCanvas?.problem || '',
+            solution: plan.solution || plan.leanCanvas?.solution || '',
+            audience: plan.targetAudience || plan.leanCanvas?.audience || plan.leanCanvas?.customerSegments || '',
+            usp: plan.usp || plan.leanCanvas?.uniqueValueProposition || ''
+          },
+          leanCanvas: plan.leanCanvas || null,
+          mvp: plan.mvp || null,
+          revenue: plan.revenue || null,
+          pitch: plan.pitch || null,
+          personas: plan.personas || null,
+          competitors: plan.competitors || null
+        };
+
+        setData(collectedData);
+        setLoading(false);
+        setTimeout(() => setIsVisible(true), 100);
+      } else {
+        throw new Error('Unexpected plan response format');
+      }
+    } catch (err) {
+      console.error('[Dashboard] Error loading persisted plan:', err.message);
+      setLoading(false);
+      if (err.response?.status === 404) {
+        setNotFound(true);
+      } else {
+        setLoadError('Failed to load the selected startup plan from the database. Please verify the server connection.');
+      }
+    }
+  }, []);
+
+  // Load from active localStorage session (when no ?plan= query param is specified)
+  const loadFromLocalStorage = useCallback(() => {
+    try {
+      setLoading(true);
+      setLoadError(null);
+      setNotFound(false);
+
       const storedPlanId = localStorage.getItem('currentPlanId') || null;
       const storedPersistenceStatus = localStorage.getItem('planPersistenceStatus') || (storedPlanId ? 'saved' : 'not_saved');
       setCurrentPlanId(storedPlanId);
@@ -55,6 +153,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
             setPersistenceStatus('save_failed');
           });
       }
+
       // Get form data for overview
       const formData = JSON.parse(localStorage.getItem('formData') || '{}');
       
@@ -68,15 +167,13 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
       const genErrors = JSON.parse(localStorage.getItem('generationErrors') || 'null');
       setGenerationErrors(genErrors);
 
-      console.log('Dashboard data loaded:', {
-        formData,
-        leanCanvas,
-        mvp,
-        revenue,
-        pitch,
-        personas,
-        competitors
-      });
+      const hasAnyData = formData.name || leanCanvas || mvp || revenue || pitch || personas || competitors;
+
+      if (!hasAnyData) {
+        setData(null);
+        setLoading(false);
+        return;
+      }
 
       const collectedData = {
         overview: {
@@ -99,10 +196,24 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
       setLoading(false);
       setTimeout(() => setIsVisible(true), 100);
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      console.error('Error loading dashboard data from localStorage:', error);
+      setData(null);
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    // Extract query parameter ?plan=<id> from window.location or currentPath
+    const searchString = window.location.search || (currentPath && currentPath.includes('?') ? '?' + currentPath.split('?')[1] : '');
+    const searchParams = new URLSearchParams(searchString);
+    const requestedPlanId = searchParams.get('plan');
+
+    if (requestedPlanId && requestedPlanId.trim()) {
+      loadPlanById(requestedPlanId.trim());
+    } else {
+      loadFromLocalStorage();
+    }
+  }, [currentPath, loadPlanById, loadFromLocalStorage]);
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: <Globe className="w-5 h-5" />, gradient: 'from-blue-500 to-cyan-500' },
@@ -142,6 +253,82 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
             <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
               Our AI is preparing your comprehensive dashboard
             </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <div className={`min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+        <Header navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} showNavigation={true} />
+        <div className="flex items-center justify-center min-h-[80vh]">
+          <div className="text-center max-w-md mx-auto px-4">
+            <div className={`w-20 h-20 rounded-full ${isDark ? 'bg-amber-950/40 text-amber-400' : 'bg-amber-100 text-amber-600'} flex items-center justify-center mx-auto mb-6`}>
+              <AlertTriangle className="w-10 h-10" />
+            </div>
+            <h3 className="text-2xl font-bold mb-3">Plan Not Found</h3>
+            <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-8 text-sm sm:text-base`}>
+              The requested startup plan could not be found in the database. It may have been removed or the link is invalid.
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button 
+                onClick={() => navigate('/my-plans')}
+                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg"
+              >
+                Back to My Plans
+              </button>
+              <button 
+                onClick={() => navigate('/start')}
+                className={`w-full sm:w-auto px-6 py-3 rounded-xl font-semibold border transition-all duration-200 ${
+                  isDark ? 'border-gray-700 hover:bg-gray-800 text-gray-300' : 'border-gray-300 hover:bg-gray-100 text-gray-700'
+                }`}
+              >
+                Create New Plan
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className={`min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+        <Header navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} showNavigation={true} />
+        <div className="flex items-center justify-center min-h-[80vh]">
+          <div className="text-center max-w-md mx-auto px-4">
+            <div className={`w-20 h-20 rounded-full ${isDark ? 'bg-rose-950/40 text-rose-400' : 'bg-rose-100 text-rose-600'} flex items-center justify-center mx-auto mb-6`}>
+              <AlertTriangle className="w-10 h-10" />
+            </div>
+            <h3 className="text-2xl font-bold mb-3">Failed to Load Plan</h3>
+            <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-8 text-sm sm:text-base`}>
+              {loadError}
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button 
+                onClick={() => {
+                  const searchString = window.location.search || (currentPath && currentPath.includes('?') ? '?' + currentPath.split('?')[1] : '');
+                  const pId = new URLSearchParams(searchString).get('plan');
+                  if (pId) loadPlanById(pId);
+                  else loadFromLocalStorage();
+                }}
+                className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Retry</span>
+              </button>
+              <button 
+                onClick={() => navigate('/my-plans')}
+                className={`w-full sm:w-auto px-6 py-3 rounded-xl font-semibold border transition-all duration-200 ${
+                  isDark ? 'border-gray-700 hover:bg-gray-800 text-gray-300' : 'border-gray-300 hover:bg-gray-100 text-gray-700'
+                }`}
+              >
+                Back to My Plans
+              </button>
+            </div>
           </div>
         </div>
       </div>

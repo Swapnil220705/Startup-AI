@@ -50,13 +50,14 @@ const App = () => {
 
 const AppContent = ({ currentPath, navigate, isDark, toggleTheme, formData, setFormData, isLoading, setIsLoading }) => {
   const renderPage = () => {
-    switch (currentPath) {
+    const basePath = (currentPath || '').split('?')[0];
+    switch (basePath) {
       case '/':
         return <LandingPage navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} />;
       case '/start':
         return <IdeaInputPage navigate={navigate} formData={formData} setFormData={setFormData} isLoading={isLoading} setIsLoading={setIsLoading} isDark={isDark} toggleTheme={toggleTheme} />;
       case '/dashboard':
-        return <DashboardPage navigate={navigate} data={mockDashboardData} isDark={isDark} toggleTheme={toggleTheme} />;
+        return <DashboardPage navigate={navigate} data={mockDashboardData} isDark={isDark} toggleTheme={toggleTheme} currentPath={currentPath} />;
       case '/pitch-preview':
         return <PitchPreviewPage navigate={navigate} data={mockDashboardData} isDark={isDark} toggleTheme={toggleTheme} />;
       case '/my-plans':
