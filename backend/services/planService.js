@@ -256,7 +256,7 @@ function listPlans(options = {}, db = null) {
       created_at,
       updated_at
     FROM plans
-    ORDER BY created_at DESC
+    ORDER BY created_at DESC, rowid DESC
     LIMIT ? OFFSET ?
   `);
 

@@ -26,7 +26,7 @@ assert(canonicalRoutes.has('/dashboard'), 'Route "/dashboard" must be registered
 assert(canonicalRoutes.has('/pitch-preview'), 'Route "/pitch-preview" must be registered');
 assert(!canonicalRoutes.has('/input'), 'Route "/input" must NOT be registered as canonical');
 assert(!canonicalRoutes.has('/canvas'), 'Route "/canvas" must NOT be registered as canonical');
-assert(!canonicalRoutes.has('/my-plans'), 'Route "/my-plans" must NOT be registered as active canonical');
+assert(canonicalRoutes.has('/my-plans'), 'Route "/my-plans" must be registered as active canonical');
 
 // 2. Scan all JS files in frontend/src/pages and frontend/src/components
 const filesToScan = [];
@@ -87,8 +87,8 @@ console.log('✅ All active navigation elements point exclusively to canonical r
 // 4. Assert non-existent paths are never used
 assert(!referencedRoutes.has('/input'), 'Active navigate() to "/input" must not exist (must use "/start")');
 assert(!referencedRoutes.has('/canvas'), 'Active navigate() to "/canvas" must not exist');
-assert(!referencedRoutes.has('/my-plans'), 'Active navigate() to "/my-plans" must not exist');
-console.log('✅ Verified: No references to /input, /canvas, or /my-plans');
+assert(referencedRoutes.has('/my-plans'), 'Active navigate() to "/my-plans" must exist');
+console.log('✅ Verified: No references to /input or /canvas; active reference to /my-plans confirmed');
 
 // 5. Assert all registered routes are reachable via navigation
 for (const route of registeredRoutes) {
@@ -161,11 +161,11 @@ console.log('✅ Verified: Every canonical route is reachable through applicatio
     'Header.js logo button must navigate to /'
   );
   assert(
-    !headerContent.includes("navigate('/my-plans')"),
-    'Header.js must NOT contain active navigate to /my-plans'
+    headerContent.includes("navigate('/my-plans')"),
+    'Header.js must allow navigation to /my-plans'
   );
 
-  console.log('✅ Header.js provides verified navigation between Landing, Start, Dashboard, and Pitch Deck');
+  console.log('✅ Header.js provides verified navigation between Landing, Start, Dashboard, Pitch Deck, and My Plans');
 }
 
 console.log('\n🎉 All Frontend Routing Verification Tests PASSED successfully!\n');

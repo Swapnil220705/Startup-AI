@@ -56,8 +56,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ## 5. Known Issues (Deferred to Subsequent Phases)
 
-1. **Frontend Plan History / Saved Plans UI**:
-   - Plans are now persisted in the SQLite database upon generation and verified by `currentPlanId`. The full UI for browsing, managing, and reloading historical plans is scheduled for Chunk 3.3.
+1. **Arbitrary Plan Loading / Reopening into Dashboard (Chunk 3.4)**:
+   - Plans can be generated, persisted, and browsed via `/my-plans`. The arbitrary loading of a past persisted plan into the active dashboard and local state is scheduled for Chunk 3.4.
 2. **CRA / Jest Test Configuration**:
    - Default CRA test `App.test.js` fails due to Jest ESM parsing on `axios` inside `node_modules` (custom test suites in `backend/tests/` verify both frontend and backend functionality).
 3. **Upstream Gemini Free-Tier Quota & Demand Restrictions (429/503)**:
@@ -68,49 +68,60 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 3 — Backend Database Persistence
-- **Current Chunk**: Chunk 3.2 — Connect Frontend Generation Flow to Persistence API
+- **Current Chunk**: Chunk 3.3 — Plan History / My Plans
 - **Status**: Completed
-- **Phase 3 Status**: IN PROGRESS (Chunk 3.1 & 3.2 complete, Chunk 3.3 next)
-- **Next Planned Chunk**: Chunk 3.3 — Plan History / My Plans UI
+- **Phase 3 Status**: IN PROGRESS (Chunks 3.1, 3.2, 3.3 complete, Chunk 3.4 next)
+- **Next Planned Chunk**: Chunk 3.4 — Plan Detail / Loading / Re-opening
 
 ---
 
-## 7. Completed in Current Chunk (Chunk 3.2)
+## 7. Completed in Current Chunk (Chunk 3.3)
 
-- [x] Inspected end-to-end frontend generation flow, storage keys, navigation, and persistence API contracts.
-- [x] Connected `IdeaInputPage.js` to the persistence API (`POST /api/plans`):
-  - After generation resolves via `Promise.allSettled`, maps input details and available module responses into the persistence payload without fabricating missing data.
-  - Automatically posts payload to `POST /api/plans`.
-  - Captures server-generated UUID v4 plan ID and stores it in `localStorage.currentPlanId`.
-  - Sets `localStorage.planPersistenceStatus = 'saved'` on success.
-  - If persistence fails (e.g. database/network error), preserves all local generated module data in `localStorage`, removes `currentPlanId` (never storing fake IDs), flags `planPersistenceStatus = 'save_failed'`, and still navigates to `/dashboard` so the user's generated work is not lost.
-  - Added double-submit protection: guarded `handleSubmit` with `if (isLoading) return;` and disabled the CTA button with dynamic loading indicator while requests are active.
-  - Updated stale key purging: wipes all 9 keys (`leanCanvas`, `mvp`, `revenue`, `pitch`, `personas`, `competitors`, `generationErrors`, `currentPlanId`, `planPersistenceStatus`) before starting new generations.
-- [x] Enhanced `DashboardPage.js` with persistence verification:
-  - Tracks `currentPlanId` and `persistenceStatus` state.
-  - If a `currentPlanId` is present, asynchronously verifies existence against the backend via `GET /api/plans/:id`.
-  - Added dynamic header pill: displays "Saved to Database" with plan ID tooltip if saved, or "Session Only (Not Saved to DB)" if save failed.
-  - Added non-intrusive warning notice banner if database persistence failed, informing the user that their plan is active in the current session.
-  - Preserved defensive rendering and fallback cards across all dashboard tabs and `PitchPreviewPage.js`.
-- [x] Created comprehensive test suite in `backend/tests/frontendPersistenceIntegration.test.js`:
-  - Test A: Complete generation (6/6) persists plan and sets `currentPlanId`.
-  - Test B: Partial generation (e.g. 4/6) persists only successful modules with `generationStatus = 'partial'` and `generationErrors`.
-  - Test C: Zero generation success (0/6) halts flow without calling `POST /api/plans` or creating an ID.
-  - Test D: Persistence failure after complete generation preserves local data, stores no fake plan ID, and sets status to `save_failed`.
-  - Test E: Persistence failure after partial generation preserves available local data and records `save_failed`.
-  - Test F: Stale plan ID cleanup removes old IDs before new generation.
-  - Test G: `GET /api/plans/:id` returns 200 for existing plan and 404 for missing plan.
-  - Test H: Full persisted plan round-trip preserves all 6 nested module data trees identically.
-  - Test I: Duplicate submission is blocked cleanly while loading is in progress.
-- [x] Updated `backend/package.json` test script to include `frontendPersistenceIntegration.test.js`.
-- [x] Full regression verification: all 10 backend test suites pass with 0 errors, backend syntax check passes, and frontend production build succeeds cleanly.
+- [x] Inspected existing database listing API (`GET /api/plans`) and verified contract:
+  - Returns `{ success: true, data: { plans, total, limit, offset } }`.
+  - Excludes heavy JSON module trees (`leanCanvas`, `mvp`, etc.) in the list query to keep payload lightweight and performant.
+  - Added deterministic tie-breaking via `ORDER BY created_at DESC, rowid DESC` in `planService.js`.
+- [x] Replaced static mock `HistoryPage.js` with fully functional API-backed `HistoryPage.js`:
+  - Fetches plans via `GET /api/plans?limit=6&offset=0` on mount.
+  - Renders responsive plan card grid (startup name, industry tag, created date, problem snippet, status badge).
+  - Implements color-coded generation status badges: Completed (green), Partial (amber), Failed (rose).
+  - Added clear loading indicator with spinning animation.
+  - Added helpful error state with "Retry" action button.
+  - Added empty state illustration with CTA navigating to `/start` ("Create Your First Plan").
+  - Implemented pagination controls (Previous/Next, page counts, bounds checking).
+  - Established "Open Plan" action navigating to `/dashboard` as the navigation path for Chunk 3.4.
+  - Removed dead "Edit" button from mock design.
+  - Supports both dark and light mode seamlessly.
+- [x] Restored `/my-plans` canonical routing:
+  - Enabled `case '/my-plans':` in `src/App.js`.
+  - Added "My Plans" navigation links to both desktop and mobile navigation in `src/components/Header.js`.
+  - Updated `backend/tests/frontendRoutes.test.js` to assert `/my-plans` is registered, active, and reachable.
+- [x] Created comprehensive test suite in `backend/tests/planHistory.test.js` (12 tests):
+  - Test 1: Empty database returns empty list structure.
+  - Test 2: Persisted plans returned with lightweight metadata (heavy JSON modules excluded).
+  - Test 3: Newest-first ordering verified across multiple plans.
+  - Test 4: Pagination limit, offset, and malformed value safety verified.
+  - Test 5: Partial plan correctly listed with partial status.
+  - Test 6: HTTP `listPlansController` conforms to API response contract.
+  - Test 7: Database integrity preserved across list operations.
+  - Test 8: Empty state conditions evaluated accurately.
+  - Test 9: Error state and retry invocation verified.
+  - Test 10: Pagination page counts and button disabling verified.
+  - Test 11: Status badge mapping correctly categorizes plans.
+  - Test 12: Open plan navigation contract confirmed.
+- [x] Added `planHistory.test.js` to `backend/package.json` test script.
+- [x] Full regression verification: all 11 backend test suites pass with 0 errors, backend syntax check passes, and frontend production build succeeds cleanly.
 
 ---
 
 ## 8. Next Planned Phase & Chunk
 
 **Phase 3: Backend Database Persistence**
-- **Chunk 3.3 — Plan History / My Plans UI**: Add history view allowing users to browse previously generated plans and reload them into the dashboard.
+- **Chunk 3.4 — Plan Detail / Loading / Re-opening**:
+  - Selecting a persisted plan from history.
+  - Fetching complete plan details via `GET /api/plans/:id`.
+  - Populating the dashboard and session state with the loaded persisted plan.
+  - Synchronizing `currentPlanId` and session data cleanly.
 
 ---
 
@@ -129,8 +140,9 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 2.3: Clean API / Partial Generation Errors (Completed - `52ecf78`)
 - **Phase 3: Backend Database Persistence (IN PROGRESS)**
   - Chunk 3.1: Persistence Architecture & Database Foundation (Completed - `f68b6a4`)
-  - Chunk 3.2: Connect Frontend Generation Flow to Persistence API (Completed)
-  - Chunk 3.3: Plan History UI & Plan Loading (Next)
+  - Chunk 3.2: Connect Frontend Generation Flow to Persistence API (Completed - `d50406a`)
+  - Chunk 3.3: Plan History / My Plans (Completed)
+  - Chunk 3.4: Plan Detail / Loading / Re-opening (Next)
 - **Phase 4: Pitch Deck Export & Sharing** (PDF / PowerPoint exports)
 - **Phase 5: Production Hardening, Test Suite Modernization & CI/CD**
 
@@ -139,10 +151,10 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `f68b6a4` (Milestone Chunk 3.1)
+- **Pre-Chunk Commit**: `d50406a` (Milestone Chunk 3.2)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
-- **Phase 3 Status**: IN PROGRESS (Chunk 3.1 & 3.2 Completed)
+- **Phase 3 Status**: IN PROGRESS (Chunks 3.1, 3.2, 3.3 Completed)
 
 ---
 
@@ -152,7 +164,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 |---|---|---|
 | **Backend Syntax** | PASS | All backend JS files checked with `node -c index.js controllers/*.js models/*.js routes/*.js services/*.js utils/*.js db/*.js tests/*.js`. |
 | **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000 with `Database: Connected & Migrated ✅`. |
-| **Backend Test Suite (10 suites)** | PASS | `npm test` runs all 10 test files cleanly: `controllers.test.js`, `uspDataFlow.test.js`, `mvpStorage.test.js`, `frontendRoutes.test.js`, `e2eGenerationFlow.test.js`, `jsonParser.test.js`, `geminiClient.test.js`, `partialGeneration.test.js`, `persistence.test.js`, `frontendPersistenceIntegration.test.js`. |
+| **Backend Test Suite (11 suites)** | PASS | `npm test` runs all 11 test files cleanly: `controllers.test.js`, `uspDataFlow.test.js`, `mvpStorage.test.js`, `frontendRoutes.test.js`, `e2eGenerationFlow.test.js`, `jsonParser.test.js`, `geminiClient.test.js`, `partialGeneration.test.js`, `persistence.test.js`, `frontendPersistenceIntegration.test.js`, `planHistory.test.js`. |
+| **Plan History / My Plans Test Suite** | PASS | `backend/tests/planHistory.test.js`: 12 comprehensive tests covering empty database, lightweight summary metadata, newest-first ordering with tie-breaking, pagination limits/offsets, partial/failed status preservation, controller HTTP contracts, empty states, error handling/retry, pagination calculations, status badge mapping, and open plan routing contract. |
 | **Frontend Persistence Integration Suite** | PASS | `backend/tests/frontendPersistenceIntegration.test.js`: 9 test categories covering 6/6 and partial generation persistence, 0/6 abort, persistence failure recovery, stale key cleanup, 404 handling, complete round-trip, and double-submit protection. |
 | **Plan Persistence Test Suite** | PASS | `backend/tests/persistence.test.js`: 10 comprehensive tests verifying in-memory initialization, migrations, CRUD, deep nested JSON preservation, pagination, ordering, 404/400 errors, partial plan persistence, and test DB isolation. |
 | **Partial Generation & Error Suite** | PASS | `backend/tests/partialGeneration.test.js`: 14 tests verifying 200 raw success contracts, 400/429/503/500 error mapping, secret scrubbing, 6/6, 5/6, multiple failure, 0/6 flows, stale data purging, and dashboard null-safety. |
@@ -160,9 +173,9 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 | **Robust JSON Parser** | PASS | `backend/tests/jsonParser.test.js`: 9 test suites covering code blocks, conversational wrappers, unclosed fences, trailing commas, BOMs, error handling, and 6 model integrations. |
 | **USP Prompt Verification** | PASS | Tested all 6 models in `uspDataFlow.test.js`: prompt strings contain `data.usp` without undefined/fallback. |
 | **MVP Storage Verification** | PASS | `backend/tests/mvpStorage.test.js`: verifies complete MVP object retention, reproduces regression, and tests consumers + legacy fallback. |
-| **Frontend Routing Verification** | PASS | `backend/tests/frontendRoutes.test.js`: 100% of active `navigate()` calls map to canonical routes; no stale `/input`, `/canvas`, or `/my-plans` references. |
+| **Frontend Routing Verification** | PASS | `backend/tests/frontendRoutes.test.js`: 100% of active `navigate()` calls map to canonical routes; verified `/my-plans` active canonical registration and reachability. |
 | **End-to-End Generation Flow** | PASS | `backend/tests/e2eGenerationFlow.test.js`: deterministic simulation of end-to-end chain from form input to Dashboard/PitchPreview consumption passes with 0 errors. |
-| **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.1dd3b70e.js`). |
+| **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.472fd210.js`). |
 
 
 ---

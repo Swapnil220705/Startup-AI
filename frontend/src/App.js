@@ -6,6 +6,7 @@ import LandingPage from './pages/LandingPage';
 import IdeaInputPage from './pages/IdeaInputPage';
 import DashboardPage from './pages/DashboardPage';
 import PitchPreviewPage from './pages/PitchPreviewPage';
+import HistoryPage from './pages/HistoryPage';
 import { mockDashboardData } from './utils/mockData';
 
 const App = () => {
@@ -58,8 +59,8 @@ const AppContent = ({ currentPath, navigate, isDark, toggleTheme, formData, setF
         return <DashboardPage navigate={navigate} data={mockDashboardData} isDark={isDark} toggleTheme={toggleTheme} />;
       case '/pitch-preview':
         return <PitchPreviewPage navigate={navigate} data={mockDashboardData} isDark={isDark} toggleTheme={toggleTheme} />;
-      // case '/my-plans':
-      //   return <HistoryPage navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} />;
+      case '/my-plans':
+        return <HistoryPage navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} />;
       default:
         return <LandingPage navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} />;
     }

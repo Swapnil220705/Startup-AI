@@ -92,12 +92,14 @@ Startup-AI/
 │   └── tests/                   # Zero-dependency deterministic test suites
 │       ├── controllers.test.js
 │       ├── e2eGenerationFlow.test.js
+│       ├── frontendPersistenceIntegration.test.js # Frontend persistence integration test suite
 │       ├── frontendRoutes.test.js
 │       ├── geminiClient.test.js
 │       ├── jsonParser.test.js
 │       ├── mvpStorage.test.js
 │       ├── partialGeneration.test.js
 │       ├── persistence.test.js  # Plan persistence & database test suite
+│       ├── planHistory.test.js  # Plan history listing, pagination & UI logic test suite
 │       └── uspDataFlow.test.js
 └── frontend/
     ├── package.json             # React 19, Tailwind CSS, Lucide React, Framer Motion
@@ -110,13 +112,13 @@ Startup-AI/
         ├── index.js             # React DOM entry point
         ├── index.css            # Tailwind directives
         ├── components/
-        │   ├── Header.js        # Global navigation header with theme toggle
+        │   ├── Header.js        # Global navigation header (Dashboard, My Plans, Pitch Deck)
         │   └── DashboardTabs.js # Tab views with defensive fallback cards
         ├── pages/
         │   ├── LandingPage.js   # Hero landing page
         │   ├── IdeaInputPage.js # Startup intake form triggering parallel generation
         │   ├── DashboardPage.js # Main output dashboard with partial generation alert
-        │   ├── HistoryPage.js   # History page component (scheduled for Chunk 3.3)
+        │   ├── HistoryPage.js   # Real API-backed saved plan history & pagination page
         │   └── PitchPreviewPage.js # Pitch deck preview slide deck
         └── utils/
             ├── Router.js        # Custom lightweight pushState/popState router
@@ -234,4 +236,43 @@ Settled Results Evaluation
 - **Keys Managed**: `leanCanvas`, `mvp`, `revenue`, `pitch`, `personas`, `competitors`, `generationErrors`, `currentPlanId`, `planPersistenceStatus`.
 - **Stale Data Protection**: All 9 keys are wiped at the start of every new generation run, preventing previous plan IDs or modules from masquerading as current results.
 - **Double-Submit Protection**: The form submission is guarded with `if (isLoading) return;` and the CTA button is disabled while requests are in flight.
+
+---
+
+## 6. Plan History & Browsing Architecture (Chunk 3.3)
+
+### 6.1 Route & View Architecture
+- **Canonical Route**: `/my-plans`
+- **Component**: `frontend/src/pages/HistoryPage.js`
+- **Global Header**: Accessible via desktop nav and mobile dropdown (`Header.js`) between Dashboard and Pitch Deck.
+- **API Endpoint Consumed**: `GET /api/plans?limit=6&offset=0`
+
+### 6.2 Plan Summaries & Performance Optimization
+- To prevent heavy payload bloat when browsing history, the backend query (`SELECT ... FROM plans`) excludes the six large JSON trees (`leanCanvas`, `mvp`, `revenue`, `pitch`, `personas`, `competitors`).
+- Returns lightweight summary rows containing: `id`, `startupName`, `industry`, `problem`, `solution`, `targetAudience`, `usp`, `generationStatus`, `createdAt`, `updatedAt`.
+- Deterministic newest-first ordering: `ORDER BY created_at DESC, rowid DESC`.
+
+### 6.3 Pagination
+- **Server Parameters**: `limit` (default 50, client uses 6 for balanced grid) and `offset` (0, 6, 12...).
+- **Response**: `{ plans: [...], total, limit, offset }`.
+- **Client Controls**:
+  - Showing `{start} to {end} of {total} saved plans`.
+  - Previous button: disabled when `offset === 0`.
+  - Next button: disabled when `offset + limit >= total`.
+  - Hidden when `total === 0`.
+
+### 6.4 State Machine & UX States
+1. **Loading State**: Displays spinner while fetching plans asynchronously.
+2. **Error State**: Surfaces non-intrusive alert box if the backend or database is unreachable, with a "Retry" button.
+3. **Empty State**: Displays an illustrated placeholder with a "Create Your First Plan" button navigating to `/start`.
+4. **Populated State**: Displays cards with startup name, industry tag, created date, problem snippet, and color-coded status badges:
+   - `completed`: Green pill with `CheckCircle2`
+   - `partial`: Amber pill with `AlertTriangle`
+   - `failed`: Rose pill with `XCircle`
+
+### 6.5 Plan Selection & Chunk 3.4 Boundary
+- **Current Role**: Chunk 3.3 is strictly focused on **history browsing and summary inspection**.
+- **Open Plan Action**: The "Open Plan" button establishes the navigation path (`navigate('/dashboard')`).
+- **Deferred to Chunk 3.4**: Arbitrary plan loading, full-plan detail retrieval (`GET /api/plans/:id`), populating the active dashboard, syncing `currentPlanId`, and reopening past plans belong to Chunk 3.4. LocalStorage remains the current-session rendering source in this chunk.
+
 

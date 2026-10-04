@@ -160,5 +160,7 @@ When model generation requests fail after retries or encounter client-side valid
 - **Chunk 2.3**: Established standardized backend API error contract (`{ success: false, error: { code, message } }`) with upstream status mapping (400, 429, 503, 500) and secret redaction. Replaced brittle `Promise.all` with `Promise.allSettled` in `IdeaInputPage.js`, added stale `localStorage` cleanup, added partial-generation status banner in `DashboardPage.js`, and added defensive missing-data fallback cards across dashboard tabs.
 - **Chunk 3.1**: Added server-side SQLite persistence layer (`backend/services/planService.js`, `backend/controllers/planController.js`, `backend/routes/plans.js`) preserving complete AI model output payloads (Lean Canvas, MVP, Revenue, Pitch, Personas, Competitors) along with generation status and error metadata.
 - **Chunk 3.2**: Connected frontend generation output to backend persistence API (`POST /api/plans`). Successfully generated model outputs are persisted to SQLite, returning server-generated `currentPlanId`. Browser `localStorage` is maintained as active session state.
+- **Chunk 3.3**: Restored canonical `/my-plans` history route and implemented real API-backed plan history page (`HistoryPage.js`) consuming `GET /api/plans`. Listing excludes heavy JSON model documents to maintain optimal query performance while exposing plan metadata and generation statuses.
+
 
 

@@ -22,6 +22,9 @@ const Header = ({ navigate, isDark, toggleTheme, showNavigation = false }) => {
                 <button onClick={() => navigate('/dashboard')} className={`hover:text-indigo-600 transition-colors ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                   Dashboard
                 </button>
+                <button onClick={() => navigate('/my-plans')} className={`hover:text-indigo-600 transition-colors ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                  My Plans
+                </button>
                 <button onClick={() => navigate('/pitch-preview')} className={`hover:text-indigo-600 transition-colors ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                   Pitch Deck
                 </button>
@@ -63,6 +66,9 @@ const Header = ({ navigate, isDark, toggleTheme, showNavigation = false }) => {
             <nav className="flex flex-col space-y-3">
               <button onClick={() => { navigate('/dashboard'); setIsMenuOpen(false); }} className="text-left py-2 hover:text-indigo-600 transition-colors">
                 Dashboard
+              </button>
+              <button onClick={() => { navigate('/my-plans'); setIsMenuOpen(false); }} className="text-left py-2 hover:text-indigo-600 transition-colors">
+                My Plans
               </button>
               <button onClick={() => { navigate('/pitch-preview'); setIsMenuOpen(false); }} className="text-left py-2 hover:text-indigo-600 transition-colors">
                 Pitch Deck
