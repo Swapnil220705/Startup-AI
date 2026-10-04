@@ -18,6 +18,16 @@
 /backend/*.log
 backend/keys/gemini-service-account.json
 
+# === Database ===
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+/backend/data/*.db*
+
 # === Misc / OS ===
 .DS_Store
 Thumbs.db
+

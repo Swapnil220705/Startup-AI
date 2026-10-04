@@ -1,6 +1,6 @@
 # Startup-AI Architecture Documentation
 
-This document describes the verified architecture and technical flow of the Startup-AI application as of Chunk 0.1.
+This document describes the verified architecture and technical flow of the Startup-AI application as of Chunk 3.1.
 
 ---
 
@@ -9,29 +9,33 @@ This document describes the verified architecture and technical flow of the Star
 ```text
 User / Browser (React 19 Frontend)
    │
-   │  Parallel HTTP POST Requests (Axios)
+   │  1. Parallel HTTP POST Requests (Axios)
    ▼
 Express 5.1 Backend Server (Port 4000)
    │
-   │  Route Dispatch (`/api/*`)
+   │  2. Route Dispatch (`/api/*`)
    ▼
 Express Routes (`routes/*.js`)
    │
-   │  Controller Handlers
+   │  3. Controller Handlers
    ▼
 Controllers (`controllers/*.js`)
    │
-   │  Prompt Construction & Model Execution
+   │  4. Prompt Construction & Centralized Gemini Client
    ▼
-AI Model Modules (`models/*.js`)
+AI Model Modules (`models/*.js`) ──► Gemini Client (`services/geminiClient.js`) ──► Google Gemini API (`gemini-3.8-flash`)
+   │                                                                                     │
+   │  5. Robust JSON Parser (`utils/jsonParser.js`)                                      ▼
+   ▼                                                                                JSON Responses
+Presentation Layer (`localStorage` / `DashboardPage.js`)
    │
-   │  Google Generative Language REST API (`generateContent`)
+   │  6. Plan Persistence API (`POST /api/plans`, `GET /api/plans/:id`)
    ▼
-Google Gemini API (`gemini-3.8-flash`)
+Plan Service (`services/planService.js`)
    │
-   │  JSON Response
+   │  7. Prepared Statements (WAL Mode, Parameterized SQL)
    ▼
-Frontend Storage & Presentation (`localStorage` -> `DashboardPage.js`)
+SQLite Database (`backend/data/startup_ai.db`)
 ```
 
 ---
@@ -40,26 +44,30 @@ Frontend Storage & Presentation (`localStorage` -> `DashboardPage.js`)
 
 ```text
 Startup-AI/
-├── .gitignore                   # Root-level ignore rules for frontend and backend
+├── .gitignore                   # Root-level ignore rules (frontend, backend, database files)
 ├── README.md                    # Project intro
 ├── ARCHITECTURE.md              # System architecture (this document)
-├── MODELS.md                    # AI models and configuration
+├── MODELS.md                    # AI models, configuration, and data structures
 ├── PROJECT_STATE.md             # Single source of truth for project lifecycle
 ├── backend/
-│   ├── .env                     # Backend environment configuration (GEMINI_API_KEY, AI_URL)
-│   ├── index.js                 # Express application entry point (port 4000)
-│   ├── listModels.js            # Utility script querying Google AI Studio models
-│   ├── package.json             # Backend dependencies (Express, Axios, Dotenv, Cors)
+│   ├── .env                     # Backend environment configuration (GEMINI_API_KEY, DATABASE_PATH)
+│   ├── index.js                 # Express application entry point (port 4000, DB init)
+│   ├── package.json             # Backend dependencies & test scripts
 │   ├── controllers/             # Route controllers handling HTTP req/res
 │   │   ├── competitorController.js
 │   │   ├── leanCanvasController.js
 │   │   ├── mvpController.js
 │   │   ├── personaController.js
 │   │   ├── pitchController.js
+│   │   ├── planController.js    # Plan persistence controller (Chunk 3.1)
 │   │   └── revenueController.js
-│   ├── keys/                    # Service account keys (gitignored)
-│   │   └── gemini-service-account.json
-│   ├── models/                  # AI prompt definition and Gemini REST callers
+│   ├── db/                      # Database connection and migration layer (Chunk 3.1)
+│   │   ├── database.js          # SQLite connection manager, pragma configuration, lifecycle
+│   │   ├── migrate.js           # Transactional migration runner with schema_migrations tracking
+│   │   └── migrations/          # Explicit SQL migration files
+│   │       └── 001_create_plans_table.sql
+│   ├── data/                    # Local development SQLite databases (gitignored)
+│   ├── models/                  # AI prompt definitions and Gemini REST callers
 │   │   ├── competitorsModel.js
 │   │   ├── leanCanvas.js
 │   │   ├── mvpGenerator.js
@@ -72,10 +80,25 @@ Startup-AI/
 │   │   ├── mvp.js
 │   │   ├── personas.js
 │   │   ├── pitch.js
+│   │   ├── plans.js             # Plan persistence routes (POST /, GET /, GET /:id)
 │   │   └── revenue.js
 │   ├── services/
-│   │   └── aiService.js         # Legacy auxiliary service for external AI server
-│   └── utils/                   # Empty directory for utility helpers
+│   │   ├── geminiClient.js      # Centralized Gemini HTTP client with retries, backoff, and limiter
+│   │   ├── planService.js       # Plan persistence service & repository abstraction
+│   │   └── aiService.js         # Legacy auxiliary service
+│   ├── utils/
+│   │   ├── apiError.js          # Standardized API error contract utility
+│   │   └── jsonParser.js        # Robust Gemini JSON parser utility
+│   └── tests/                   # Zero-dependency deterministic test suites
+│       ├── controllers.test.js
+│       ├── e2eGenerationFlow.test.js
+│       ├── frontendRoutes.test.js
+│       ├── geminiClient.test.js
+│       ├── jsonParser.test.js
+│       ├── mvpStorage.test.js
+│       ├── partialGeneration.test.js
+│       ├── persistence.test.js  # Plan persistence & database test suite
+│       └── uspDataFlow.test.js
 └── frontend/
     ├── package.json             # React 19, Tailwind CSS, Lucide React, Framer Motion
     ├── tailwind.config.js       # Tailwind CSS configuration
@@ -88,12 +111,12 @@ Startup-AI/
         ├── index.css            # Tailwind directives
         ├── components/
         │   ├── Header.js        # Global navigation header with theme toggle
-        │   └── DashboardTabs.js # Tab views for Lean Canvas, MVP, Revenue, Personas, etc.
+        │   └── DashboardTabs.js # Tab views with defensive fallback cards
         ├── pages/
         │   ├── LandingPage.js   # Hero landing page
         │   ├── IdeaInputPage.js # Startup intake form triggering parallel generation
-        │   ├── DashboardPage.js # Main output dashboard rendering tabs
-        │   ├── HistoryPage.js   # History page component (commented route)
+        │   ├── DashboardPage.js # Main output dashboard with partial generation alert
+        │   ├── HistoryPage.js   # History page component (scheduled for Chunk 3.3)
         │   └── PitchPreviewPage.js # Pitch deck preview slide deck
         └── utils/
             ├── Router.js        # Custom lightweight pushState/popState router
@@ -103,44 +126,72 @@ Startup-AI/
 
 ---
 
-## 3. End-to-End Request Flow
+## 3. Database & Persistence Architecture (Chunk 3.1)
 
-1. **User Intake**:
-   - The user navigates to `/start` (`IdeaInputPage.js`) and fills in the startup inputs: name, domain/industry, problem, solution, target audience, and unique selling proposition (USP).
-2. **Parallel Generation Dispatch**:
-   - Upon form submission, `IdeaInputPage.js` executes 6 parallel HTTP POST requests using `Promise.all`:
-     - `POST http://localhost:4000/api/lean-canvas`
-     - `POST http://localhost:4000/api/mvp`
-     - `POST http://localhost:4000/api/revenue`
-     - `POST http://localhost:4000/api/pitch`
-     - `POST http://localhost:4000/api/personas`
-     - `POST http://localhost:4000/api/competitors`
-3. **Backend Routing & Controllers**:
-   - Express receives requests on `port 4000` via `backend/index.js`.
-   - Each route delegates to its controller:
-     - `leanCanvasController.js` and `mvpController.js` invoke model functions directly with `inputData`.
-     - *Known Issue*: `competitorController.js`, `personaController.js`, `pitchController.js`, and `revenueController.js` currently pass legacy endpoint arguments (e.g., `generateCompetitors('/competitors', inputData)`), scheduled for fix in Chunk 1.1.
-4. **AI Generation (Gemini REST)**:
-   - Each module in `backend/models/*.js` constructs domain-specific prompts instructing the model to output strict JSON.
-   - A direct HTTP POST is dispatched via `axios` to the Google AI Studio Generative Language endpoint:
-     `https://generativelanguage.googleapis.com/v1/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`
-   - The raw response text is extracted from `response.data.candidates[0].content.parts[0].text`, sanitized of markdown fences (` ```json `), parsed with `JSON.parse()`, and returned to the controller.
-5. **Persistence & Presentation**:
-   - The frontend receives the 6 JSON responses.
-   - Responses are serialized into browser `localStorage`:
-     - `localStorage.setItem('formData', ...)`
-     - `localStorage.setItem('leanCanvas', ...)`
-     - `localStorage.setItem('mvp', ...)`
-     - `localStorage.setItem('revenue', ...)`
-     - `localStorage.setItem('pitch', ...)`
-     - `localStorage.setItem('personas', ...)`
-     - `localStorage.setItem('competitors', ...)`
-   - The user is navigated to `/dashboard` (`DashboardPage.js`), which reads from `localStorage` and presents the modules across interactive tabs.
+### 3.1 Technology Selection: SQLite (`better-sqlite3`)
+- **Zero External Infrastructure**: Operates embedded in-process; requires no database daemons, container setup, or external cloud dependencies for local development and CI testing.
+- **Synchronous & High Performance**: Powered by `better-sqlite3`, providing C++ bindings directly into SQLite, prepared statements, and synchronous execution that avoids async connection overhead for single-node Express.
+- **WAL Mode & Foreign Keys**: Configured with `PRAGMA foreign_keys = ON` and `PRAGMA journal_mode = WAL` (Write-Ahead Logging), allowing concurrent read operations without blocking writes.
+- **Test Isolation**: Supports `:memory:` databases, allowing test suites to spin up an isolated, fully migrated database in RAM in < 1ms, perform assertions, and teardown cleanly without touching the developer's local `startup_ai.db`.
+- **PostgreSQL Migration Path**: The SQL schema and queries adhere to standard ANSI SQL (`TEXT`, `INTEGER`, `TIMESTAMPTZ`, `JSONB`). Repositories use parameterized queries that map directly to PostgreSQL drivers (`pg` / `knex` pool) when moving to multi-server production deployment.
+
+### 3.2 Schema Design: Single `plans` Table with JSON Columns
+Rather than over-normalizing six rapidly evolving generative AI documents into dozens of brittle relational tables, each startup plan is stored in a cohesive record with JSON/TEXT columns:
+
+```sql
+CREATE TABLE IF NOT EXISTS plans (
+  id TEXT PRIMARY KEY NOT NULL,             -- Server-generated UUID v4
+  startup_name TEXT NOT NULL,               -- Required business name
+  industry TEXT,                           -- Startup domain/industry
+  problem TEXT,                            -- Problem statement
+  solution TEXT,                           -- Solution description
+  target_audience TEXT,                    -- Target customer segment
+  usp TEXT,                                -- Unique Selling Proposition
+  lean_canvas TEXT,                        -- JSON-serialized Lean Canvas
+  mvp TEXT,                                -- JSON-serialized MVP Roadmap
+  revenue TEXT,                            -- JSON-serialized Revenue Model
+  pitch TEXT,                              -- JSON-serialized Pitch
+  personas TEXT,                           -- JSON-serialized User Personas
+  competitors TEXT,                        -- JSON-serialized Competitors
+  generation_status TEXT NOT NULL DEFAULT 'completed', -- 'completed' | 'partial' | 'failed'
+  generation_errors TEXT,                  -- JSON-serialized error metadata (if partial)
+  created_at TEXT NOT NULL,                -- ISO-8601 UTC timestamp
+  updated_at TEXT NOT NULL                 -- ISO-8601 UTC timestamp
+);
+
+CREATE INDEX IF NOT EXISTS idx_plans_created_at ON plans(created_at DESC);
+```
+
+### 3.3 Key Architectural Decisions
+1. **Server-Side UUID v4 Identifier**:
+   - Every plan receives a stable, cryptographically random, URL-safe UUID generated on the server via Node's native `crypto.randomUUID()`.
+   - Client-provided IDs are strictly ignored during creation to prevent ID spoofing.
+2. **Deterministic Migration System**:
+   - Migrations live in `backend/db/migrations/` as numbered SQL files (`001_create_plans_table.sql`).
+   - `backend/db/migrate.js` tracks applied migrations in `schema_migrations`, executing each inside an atomic transaction.
+3. **Layered Repository Pattern**:
+   - Controllers (`controllers/planController.js`) delegate to `services/planService.js`, which manages serialization, deserialization, status computation, and prepared statement execution. Controllers contain no raw SQL.
+4. **Structured Error Contract**:
+   - Persistence endpoints adhere to the API error contract established in Chunk 2.3:
+     `{ "success": false, "error": { "code": "...", "message": "..." } }`.
+   - Internal SQLite errors and stack traces are suppressed and logged server-side, returning safe generic messages to the client.
 
 ---
 
-## 4. Key Architectural Patterns
+## 4. End-to-End Persistence API
 
-- **Stateless Backend**: The Express backend does not maintain sessions or database connections; each endpoint functions as a stateless transformation and proxy to Gemini.
-- **Client-Side State Storage**: The application currently relies on browser `localStorage` as its primary storage mechanism.
-- **Custom Client Routing**: Navigation uses a custom HTML5 History API router (`Router.js`) instead of `react-router-dom` (which is installed in `package.json` but not used in `App.js`).
+| Method | Endpoint | Description | Status Code | Response Shape |
+|---|---|---|---|---|
+| `POST` | `/api/plans` | Create and persist a startup plan | `201 Created` | `{ success: true, data: { id, startupName, ... } }` |
+| `GET` | `/api/plans` | List plans with pagination (`?limit=50&offset=0`) | `200 OK` | `{ success: true, data: { plans: [...], total, limit, offset } }` |
+| `GET` | `/api/plans/:id` | Retrieve single plan by UUID | `200 OK` / `404 Not Found` | `{ success: true, data: { id, ... } }` |
+
+---
+
+## 5. Storage Strategy & Frontend Boundary
+
+- **Chunk 3.1 Scope**: Establishes the backend persistence foundation, database, migrations, service layer, and verified REST endpoints.
+- **Client Boundary**: Frontend `localStorage` remains active and untouched in Chunk 3.1 to preserve uninterrupted user workflows.
+- **Upcoming Migration (Chunk 3.2 & 3.3)**:
+  - Chunk 3.2: Connect `IdeaInputPage.js` to automatically dispatch `POST /api/plans` upon generation completion, storing the returned plan ID.
+  - Chunk 3.3: Introduce Plan History UI, allowing users to browse previously generated plans and load them into the Dashboard.
