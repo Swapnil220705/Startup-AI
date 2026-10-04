@@ -68,10 +68,10 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 4 — Authentication & Multi-User Plan Architecture
-- **Current Chunk**: Chunk 4.2 — Authentication Backend Foundation
+- **Current Chunk**: Chunk 4.3 — Plan Ownership, Anonymous Trial & Claiming
 - **Status**: Completed
-- **Phase 4 Status**: IN PROGRESS (Chunks 4.1 & 4.2 complete, Chunk 4.3 next)
-- **Next Planned Chunk**: Chunk 4.3 — Plan Ownership, Multi-User Isolation & Plan Claiming API
+- **Phase 4 Status**: IN PROGRESS (Chunks 4.1, 4.2 & 4.3 complete, Chunk 4.4 next)
+- **Next Planned Chunk**: Chunk 4.4 — Frontend Authentication UX & Trial Claim Flow
 
 ---
 
@@ -102,7 +102,7 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ---
 
-## 7.7 Completed in Current Chunk (Chunk 4.2) — Authentication Backend Foundation
+## 7.7 Completed in Chunk 4.2 — Authentication Backend Foundation
 
 - [x] **Database Migration 002 (`backend/db/migrations/002_add_user_id_to_plans.sql`)**:
   - Created `users` table: `id` (UUID), `email` (UNIQUE NOCASE), `name`, `picture_url`, `auth_provider` ('google' | 'local'), `provider_subject_id`, `password_hash`, `created_at`, `updated_at`.
@@ -133,21 +133,57 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 - [x] **Comprehensive Test Suite (`backend/tests/authEndpoints.test.js`)**:
   - Created 36 deterministic zero-dependency tests (Tests A through AJ) covering migrations, password hashing, sessions, signup, login, Google verification, /me, logout, and security sanitization.
   - Added to `backend/package.json` test script.
+
+---
+
+## 7.8 Completed in Current Chunk (Chunk 4.3) — Plan Ownership, Anonymous Trial & Claiming
+
+- [x] **Authenticated Plan Ownership (`POST /api/plans`)**:
+  - Automatically resolves `req.user` from `authenticateUser` middleware and assigns `user_id = req.user.id`.
+  - Client-supplied `userId`, `user_id`, or query parameters are strictly ignored.
+- [x] **Anonymous One-Plan Trial Enforcement**:
+  - Issues cryptographically random trial token in HTTP-only, `SameSite=Lax`, `Path=/`, 30-day `startup_ai_trial` cookie.
+  - Tracks trial sessions in SQLite `trial_sessions` (`id`, `plan_id`, `ip_hash`, `created_at`).
+  - Salted SHA-256 IP hash recorded as secondary abuse mitigation signal (never blocks NAT/VPN shared IPs).
+  - Enforces strict 1-plan limit: if an anonymous trial session already has a persisted plan, subsequent creations are rejected with HTTP 403 `TRIAL_LIMIT_REACHED`.
+  - Failed generations before persistence do not consume the trial.
+- [x] **Anonymous Plan Access Security (`GET /api/plans/:id`)**:
+  - Anonymous visitors can ONLY access plans where `plan.user_id IS NULL` AND `trial_sessions.plan_id` matches the requester's `startup_ai_trial` cookie.
+  - Non-matching or missing trial cookies return safe 404 `PLAN_NOT_FOUND` (prevents UUID enumeration).
+  - Authenticated users can ONLY access plans they own (`plan.user_id === req.user.id`). Other users' plans return safe 404 `PLAN_NOT_FOUND`.
+- [x] **User History Isolation (`GET /api/plans`)**:
+  - Authenticated users receive only plans where `user_id = req.user.id` with deterministic ordering and pagination.
+  - Anonymous users receive an empty history list (`{ plans: [], total: 0 }`).
+- [x] **Authorization for Plan Mutation & Deletion (`PATCH / DELETE /api/plans/:id`)**:
+  - Guarded with `requireAuth`. Unauthenticated requests return 401 `UNAUTHORIZED`.
+  - Non-owners receive safe 404 `PLAN_NOT_FOUND`.
+  - Owner PATCH preserves immutable fields (`id`, `user_id`, `created_at`, `generation_status`, `generation_errors`, and all 6 AI modules).
+- [x] **Atomic Plan Claiming (`POST /api/plans/claim`)**:
+  - Requires authenticated session (`requireAuth`) and matching `startup_ai_trial` cookie linked to `planId`.
+  - Atomically assigns ownership: `UPDATE plans SET user_id = :userId, updated_at = :now WHERE id = :planId AND user_id IS NULL`.
+  - Race-condition safe: returns HTTP 409 `PLAN_ALREADY_CLAIMED` on duplicate or concurrent claim attempts without overwriting.
+  - Preserves all 6 AI module trees, status, and timestamps without duplication or regeneration.
+  - Old anonymous trial access is immediately revoked after claim.
+- [x] **Phase 3 Plan Backward Compatibility**:
+  - Existing plans with `user_id = NULL` lacking trial session linkage remain isolated, unclaimable, and invisible in history.
+- [x] **Comprehensive Test Suite (`backend/tests/planAuthorization.test.js`)**:
+  - 12 comprehensive test categories (A through L) covering ownership, trials, limits, isolation, PATCH/DELETE authorization, atomic claim, race conditions, and error sanitization.
 - [x] **Explicit Scope Boundaries Maintained**:
-  - Plan ownership and claiming were NOT implemented yet (deferred to Chunk 4.3).
-  - Frontend authentication UX and AuthContext were NOT implemented yet (deferred to Chunk 4.4).
-  - All 13 existing Phase 3 test suites continue to pass with 0 regressions.
+  - Chunk 4.4 was NOT started.
+  - Frontend authentication UX, AuthContext, AuthModal, Google Sign-in button, and Header UI were NOT started.
+  - All 15 backend test suites pass with 0 regressions.
 
 ---
 
 ## 8. Next Planned Phase & Chunk
 
 **Phase 4: Authentication & Multi-User Plan Architecture**
-- **Chunk 4.3 — Plan Ownership, Multi-User Isolation & Plan Claiming API**:
-  - Scope `POST /api/plans`, `GET /api/plans`, `GET /api/plans/:id`, `PATCH /api/plans/:id`, and `DELETE /api/plans/:id` to `req.user.id`.
-  - Implement anonymous 1-trial gatekeeper in `trial_sessions`.
-  - Implement atomic trial plan claiming endpoint: `POST /api/plans/claim`.
-  - Verify multi-user isolation with automated tests.
+- **Chunk 4.4 — Frontend Authentication UX & Trial Claim Flow**:
+  - Implement `AuthContext` (`src/utils/AuthContext.js`) wrapping React tree with session hydration (`GET /api/auth/me`).
+  - Implement `AuthModal` component supporting Google Sign-In button and Email/Password login/signup tabs.
+  - Integrate Header profile avatar / dropdown menu (My Plans, Sign Out).
+  - Implement Dashboard trial banner ("✨ Free Trial Plan • Sign in to save permanently") and auto-claim hook.
+  - Connect trial claim flow end-to-end between frontend and backend.
 
 ---
 
@@ -183,11 +219,11 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `632609eb11eb5aadc200ad44deb4d5b4d3b327df` (docs: define phase 4 authentication architecture)
+- **Pre-Chunk Commit**: `37f3f0d29116044f2430e00c1c0005d8d7366a40` (feat: implement user authentication and session foundation)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
-- **Phase 4 Status**: IN PROGRESS (Chunks 4.1 and 4.2 Completed)
+- **Phase 4 Status**: IN PROGRESS (Chunks 4.1, 4.2 and 4.3 Completed)
 
 ---
 
@@ -197,7 +233,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 |---|---|---|
 | **Backend Syntax** | PASS | All backend JS files checked with `node -c index.js controllers/*.js models/*.js routes/*.js services/*.js utils/*.js db/*.js middleware/*.js tests/*.js`. |
 | **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000 with `Database: Connected & Migrated ✅`. |
-| **Backend Test Suite (14 suites)** | PASS | `npm test` runs all 14 test files cleanly with 0 errors across 150+ assertions. |
+| **Backend Test Suite (15 suites)** | PASS | `npm test` runs all 15 test files cleanly with 0 errors across 160+ assertions. |
+| **Plan Authorization & Trial Suite** | PASS | `backend/tests/planAuthorization.test.js`: 12 comprehensive categories (A–L) verifying authenticated ownership, anonymous trial cookies, 403 limit enforcement, trial & user isolation, history isolation, PATCH/DELETE authorization, atomic plan claiming, claim race safety (409), Phase 3 backward compatibility, and error sanitization. |
 | **Auth Endpoints Test Suite** | PASS | `backend/tests/authEndpoints.test.js`: 36 comprehensive tests (A–AJ) covering migrations, scrypt hashing, timing-safe verification, session random tokens, 30-day expiry, signup, login, Google token verification, local account collision protection, /me, logout cookie clearing, and secret stripping. |
 | **Plan Lifecycle Test Suite** | PASS | `backend/tests/planLifecycle.test.js`: 17 comprehensive tests (A–Q) covering metadata updates, field preservation, empty name validation, timestamp management, module preservation, 404 handling, single plan deletion isolation, active session purging, non-active session protection, active session metadata synchronization, partial plan lifecycle, and HTTP controller contracts. |
 | **Plan Re-Opening & Hydration Suite** | PASS | `backend/tests/reopenPlan.test.js`: 15 comprehensive tests (A–O) covering URL query generation, plan ID extraction, full document retrieval, formData restoration, module restoration, partial plan error handling, currentPlanId synchronization, stale data cleanup between plans, 404 not-found handling, network failure error handling, direct dashboard session retention, generation regression, history regression, and full round-trip. |
@@ -212,19 +249,7 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 | **Frontend Routing Verification** | PASS | `backend/tests/frontendRoutes.test.js`: 100% of active `navigate()` calls map to canonical routes; verified `/my-plans` active canonical registration and reachability. |
 | **End-to-End Generation Flow** | PASS | `backend/tests/e2eGenerationFlow.test.js`: deterministic simulation of end-to-end chain from form input to Dashboard/PitchPreview consumption passes with 0 errors. |
 | **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.0139c39c.js`). |
-| **Plan Lifecycle Test Suite** | PASS | `backend/tests/planLifecycle.test.js`: 17 comprehensive tests (A–Q) covering metadata updates, field preservation, empty name validation, timestamp management, module preservation, 404 handling, single plan deletion isolation, active session purging, non-active session protection, active session metadata synchronization, partial plan lifecycle, and HTTP controller contracts. |
-| **Plan Re-Opening & Hydration Suite** | PASS | `backend/tests/reopenPlan.test.js`: 15 comprehensive tests (A–O) covering URL query generation, plan ID extraction, full document retrieval, formData restoration, module restoration, partial plan error handling, currentPlanId synchronization, stale data cleanup between plans, 404 not-found handling, network failure error handling, direct dashboard session retention, generation regression, history regression, and full round-trip. |
-| **Plan History / My Plans Test Suite** | PASS | `backend/tests/planHistory.test.js`: 12 comprehensive tests covering empty database, lightweight summary metadata, newest-first ordering with tie-breaking, pagination limits/offsets, partial/failed status preservation, controller HTTP contracts, empty states, error handling/retry, pagination calculations, status badge mapping, and open plan routing contract. |
-| **Frontend Persistence Integration Suite** | PASS | `backend/tests/frontendPersistenceIntegration.test.js`: 9 test categories covering 6/6 and partial generation persistence, 0/6 abort, persistence failure recovery, stale key cleanup, 404 handling, complete round-trip, and double-submit protection. |
-| **Plan Persistence Test Suite** | PASS | `backend/tests/persistence.test.js`: 10 comprehensive tests verifying in-memory initialization, migrations, CRUD, deep nested JSON preservation, pagination, ordering, 404/400 errors, partial plan persistence, and test DB isolation. |
-| **Partial Generation & Error Suite** | PASS | `backend/tests/partialGeneration.test.js`: 14 tests verifying 200 raw success contracts, 400/429/503/500 error mapping, secret scrubbing, 6/6, 5/6, multiple failure, 0/6 flows, stale data purging, and dashboard null-safety. |
-| **Gemini Client & Retry Suite** | PASS | `backend/tests/geminiClient.test.js`: 13 test categories covering 429/503 retries, network recovery, fail-fast on 400/401/403, exponential backoff, jitter, limiter, and model integration. |
-| **Robust JSON Parser** | PASS | `backend/tests/jsonParser.test.js`: 9 test suites covering code blocks, conversational wrappers, unclosed fences, trailing commas, BOMs, error handling, and 6 model integrations. |
-| **USP Prompt Verification** | PASS | Tested all 6 models in `uspDataFlow.test.js`: prompt strings contain `data.usp` without undefined/fallback. |
-| **MVP Storage Verification** | PASS | `backend/tests/mvpStorage.test.js`: verifies complete MVP object retention, reproduces regression, and tests consumers + legacy fallback. |
-| **Frontend Routing Verification** | PASS | `backend/tests/frontendRoutes.test.js`: 100% of active `navigate()` calls map to canonical routes; verified `/my-plans` active canonical registration and reachability. |
-| **End-to-End Generation Flow** | PASS | `backend/tests/e2eGenerationFlow.test.js`: deterministic simulation of end-to-end chain from form input to Dashboard/PitchPreview consumption passes with 0 errors. |
-| **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.0139c39c.js`). |
+| **Manual HTTP Verification (9 scenarios)** | PASS | Verified with live Express HTTP server: anonymous creation & cookie, 403 trial limit, cross-visitor isolation, user A plan creation, cross-user isolation, cross-user patch/delete blocked, atomic claim, anonymous revocation after claim, and history isolation. |
 
 
 ---

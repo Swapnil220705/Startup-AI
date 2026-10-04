@@ -410,8 +410,8 @@ To avoid leaving stale data in the browser working state after mutations, the fo
 > [!NOTE]
 > **Implementation Status**:
 > - **Chunk 4.2 (COMPLETED)**: Database Migration 002 (`users`, `sessions`, `trial_sessions`, `plans.user_id`), Authentication Service (`authService.js`), secure HTTP-only cookie sessions, Google ID token verification (`google-auth-library`), email signup/login/logout/me endpoints, timing-safe scrypt password hashing, and CORS credentials configuration.
-> - **Chunk 4.3 (PLANNED NEXT)**: Multi-user plan ownership scoping, anonymous trial 1-plan gatekeeper, and atomic trial plan claiming (`POST /api/plans/claim`).
-> - **Chunk 4.4 (PLANNED)**: Frontend AuthContext, AuthModal, Google Sign-in button, header user profile dropdown, and dashboard claim banner.
+> - **Chunk 4.3 (COMPLETED)**: Multi-user plan ownership scoping, anonymous trial cookie (`startup_ai_trial`), 1-plan gatekeeper in `trial_sessions` (`403 TRIAL_LIMIT_REACHED`), secure anonymous plan access control (matching trial cookie required; 404 for unlinked), history isolation (`GET /api/plans` user-filtered or empty for anonymous), authorized `PATCH` / `DELETE` (owner-only with safe 404), and atomic trial plan claiming (`POST /api/plans/claim`) with race-condition defense (`409 PLAN_ALREADY_CLAIMED`).
+> - **Chunk 4.4 (PLANNED NEXT)**: Frontend AuthContext, AuthModal, Google Sign-in button, header user profile dropdown, and dashboard claim banner.
 
 ### 9.1 High-Level Authentication & Trial Flow
 
@@ -643,12 +643,13 @@ Step 8: Dashboard updates status to "Saved to Account".
 
 | Endpoint | Anonymous Request | Authenticated Request |
 |---|---|---|
-| `POST /api/plans` | Allowed if under 1-trial limit; creates plan with `user_id = NULL`. If trial used, returns `403 TRIAL_LIMIT_REACHED`. | Creates plan with `user_id = req.user.id`. |
-| `GET /api/plans` | Returns `{ plans: [], total: 0 }` (or active trial plan only). Prevents browsing other users' plans. | Returns `SELECT ... WHERE user_id = req.user.id ORDER BY created_at DESC LIMIT ? OFFSET ?`. |
-| `GET /api/plans/:id` | Allowed if `user_id = NULL` (trial plan preview). If plan is owned by a user, returns `404 PLAN_NOT_FOUND` (prevents ID enumeration). | Allowed if `user_id = req.user.id` or `user_id = NULL`. Returns `404` if owned by another user. |
-| `PATCH /api/plans/:id` | `401 UNAUTHORIZED` (anonymous users cannot mutate persisted plans; must claim first). | Allowed if `user_id = req.user.id`. Returns `404` if owned by another user. |
-| `DELETE /api/plans/:id`| `401 UNAUTHORIZED`. | Allowed if `user_id = req.user.id`. Returns `404` if owned by another user. |
-| `POST /api/plans/claim`| `401 UNAUTHORIZED`. | Allowed if plan exists and `user_id = NULL`. Updates `user_id = req.user.id`. |
+| `POST /api/plans` | Allowed if under 1-trial limit; creates plan with `user_id = NULL` and records `plan_id` in `trial_sessions`. Issues `startup_ai_trial` cookie. If trial used, returns `403 TRIAL_LIMIT_REACHED`. | Creates plan with `user_id = req.user.id`. Client-supplied user IDs are strictly ignored. |
+| `GET /api/plans` | Returns empty history `{ plans: [], total: 0 }`. Prevents exposing anonymous or other users' plans. | Returns `SELECT ... WHERE user_id = req.user.id ORDER BY created_at DESC LIMIT ? OFFSET ?`. |
+| `GET /api/plans/:id` | Allowed ONLY if `user_id = NULL` AND requester possesses matching `startup_ai_trial` cookie linked in `trial_sessions`. Unlinked plans return safe `404 PLAN_NOT_FOUND` to prevent ID enumeration. | Allowed ONLY if `user_id = req.user.id`. Returns safe `404 PLAN_NOT_FOUND` if unowned or owned by another user. |
+| `PATCH /api/plans/:id` | `401 UNAUTHORIZED` (guarded by `requireAuth`). | Allowed ONLY if `user_id = req.user.id`. Non-owner receives safe `404 PLAN_NOT_FOUND`. Updates metadata only; AI modules, status, and `user_id` are immutable. |
+| `DELETE /api/plans/:id`| `401 UNAUTHORIZED` (guarded by `requireAuth`). | Allowed ONLY if `user_id = req.user.id`. Non-owner receives safe `404 PLAN_NOT_FOUND`. |
+| `POST /api/plans/claim`| `401 UNAUTHORIZED` (guarded by `requireAuth`). | Requires authenticated session and matching `startup_ai_trial` cookie linked in `trial_sessions`. Atomically updates `user_id = req.user.id`. Returns `409 PLAN_ALREADY_CLAIMED` on conflict. |
+
 
 ### 9.9 Frontend Authentication UX & State Architecture
 
