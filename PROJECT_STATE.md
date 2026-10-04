@@ -67,108 +67,87 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ## 6. Current Status
 
-- **Phase**: Phase 3 — Backend Database Persistence
-- **Current Chunk**: Chunk 3.4 — Plan Detail / Loading / Re-opening
-- **Status**: Completed
-- **Phase 3 Status**: IN PROGRESS (Chunks 3.1, 3.2, 3.3, 3.4 complete, Chunk 3.5 next)
-- **Next Planned Chunk**: Chunk 3.5 — Update/Delete/Archive & Persistence Edge Cases
+- **Phase**: Phase 4 — Authentication & Multi-User Plan Architecture
+- **Current Chunk**: Chunk 4.1 — Authentication & Anonymous Trial Architecture Audit
+- **Status**: Completed (Architecture & Design Audit)
+- **Phase 4 Status**: IN PROGRESS (Chunk 4.1 complete, Chunk 4.2 next)
+- **Next Planned Chunk**: Chunk 4.2 — Database Migration 002, User Model & Core Backend Auth Endpoints
 
 ---
 
-## 7. Completed in Current Chunk (Chunk 3.4)
+## 7. Completed in Phase 3
 
-- [x] Inspected existing detail API (`GET /api/plans/:id`) and verified complete nested JSON return contract.
-- [x] Connected My Plans "Open Plan" action to carry the persisted plan ID:
-  - Updates navigation target in `HistoryPage.js` to `/dashboard?plan=${encodeURIComponent(plan.id)}`.
-  - Updated `Router.js` to preserve `window.location.search` in `currentPath`.
-  - Updated `App.js` to match base routes via `currentPath.split('?')[0]` and forward `currentPath` to `DashboardPage`.
-- [x] Implemented plan restoration by ID in `DashboardPage.js`:
-  - When `?plan=<id>` is detected, invokes `loadPlanById(planId)`.
-  - **Stale Data Protection**: Clears all previous plan keys (`formData`, `leanCanvas`, `mvp`, `revenue`, `pitch`, `personas`, `competitors`, `generationErrors`, `currentPlanId`, `planPersistenceStatus`) before writing new plan data.
-  - **Form Data Restoration**: Restores `formData` in exact frontend property shape (`name`, `domain`, `problem`, `solution`, `audience`, `usp`).
-  - **Module Restoration**: Restores all available modules without fabricating missing data.
-  - **Partial Plan Safe Restoration**: Restores `generationErrors` and preserves missing modules as null, activating the dashboard's defensive fallback rendering.
-  - **Metadata Synchronization**: Sets `currentPlanId = plan.id` and `planPersistenceStatus = 'saved'`.
-- [x] Added robust error and not-found states:
-  - Missing plan (HTTP 404): Renders "Plan Not Found" screen with "Back to My Plans" and "Create New Plan" CTAs.
-  - Server / Network failure: Renders "Failed to Load Plan" screen with actionable "Retry" and "Back to My Plans" CTAs.
-- [x] Preserved direct `/dashboard` navigation:
-  - When navigating to `/dashboard` without `?plan=`, uses active `localStorage` session state or displays standard empty state if no session exists.
-- [x] Pitch Preview compatibility:
-  - Restored `localStorage` state allows `PitchPreviewPage.js` to render the restored plan's pitch deck immediately upon navigation.
-- [x] Created comprehensive test suite in `backend/tests/reopenPlan.test.js` (15 tests, Tests A through O):
-  - Test A: History "Open Plan" URL construction (`/dashboard?plan=<UUID>`).
-  - Test B: Dashboard plan ID parameter extraction.
-  - Test C: `GET /api/plans/:id` endpoint data completeness.
-  - Test D: Restoring `formData` into `localStorage`.
-  - Test E: Restoring all 6 generated modules.
-  - Test F: Restoring partial plan and `generationErrors` without fake data.
-  - Test G & H: `currentPlanId` and `planPersistenceStatus` updates.
-  - Test I: Stale data purge between plan switches (Plan B completely overwrites Plan A).
-  - Test J: Missing plan 404 handling.
-  - Test K: Network/API failure handling and retry state.
-  - Test L: Direct `/dashboard` retains active session data.
-  - Test M: Generation flow regression check.
-  - Test N: History listing regression check.
-  - Test O: Complete plan round-trip verification.
-- [x] Updated `backend/package.json` test script to include `reopenPlan.test.js`.
-- [x] Full regression verification: all 12 backend test suites pass with 0 errors, backend syntax check passes, and frontend production build succeeds cleanly.
+### Chunk 3.4 — Plan Detail / Loading / Re-opening
+- [x] Detail API (`GET /api/plans/:id`) integration and re-opening navigation via `/dashboard?plan=<UUID>`.
+- [x] Stale data purge before hydrating historical plan into active localStorage session.
+- [x] Form data and all 6 modules restored cleanly without fabricating missing data.
+- [x] Partial plan safety with generation errors metadata.
+- [x] Robust 404 not-found and server error screens with retry CTAs.
+- [x] Pitch preview and direct `/dashboard` navigation backward compatibility.
+
+### Chunk 3.5 — Update / Delete / Archive & Persistence Lifecycle
+- [x] Metadata editing endpoint (`PATCH /api/plans/:id`) with validation, protected AI modules, and timestamp updates.
+- [x] Single plan deletion endpoint (`DELETE /api/plans/:id`).
+- [x] Active session synchronization: deleting active plan purges all 10 localStorage keys; non-active deletion leaves session intact; metadata edits synchronize into active `formData`.
+- [x] Modals for edit and delete with active plan warnings in `HistoryPage.js` and `DashboardPage.js`.
 
 ---
 
-## 7.5 Current Completed Chunk: Chunk 3.5 — Update / Delete / Archive & Persistence Lifecycle
+## 7.6 Current Completed Chunk: Chunk 4.1 — Authentication & Anonymous Trial Architecture Audit
 
-- [x] Backend Plan Update & Metadata Editing:
-  - Implemented `updatePlan(id, updates, db)` in `backend/services/planService.js`.
-  - Registered `PATCH /api/plans/:id` and controller `updatePlanController` in `backend/controllers/planController.js`.
-  - Restricted editable fields to core metadata (`startupName`, `industry`, `problem`, `solution`, `targetAudience`, `usp`).
-  - Protected AI-generated modules (`leanCanvas`, `mvp`, `revenue`, `pitch`, `personas`, `competitors`), `id`, and `created_at` from alteration.
-  - Validates `startupName` cannot be empty string or whitespace (returns HTTP 400 `INVALID_INPUT`).
-  - Updates `updated_at` timestamp with current ISO-8601 UTC time while preserving `created_at`.
-  - Structured 404 response if plan ID is not found in database.
-- [x] Backend Plan Deletion:
-  - Implemented `deletePlan(id, db)` in `backend/services/planService.js`.
-  - Registered `DELETE /api/plans/:id` and controller `deletePlanController` in `backend/controllers/planController.js`.
-  - Uses parameterized queries (`DELETE FROM plans WHERE id = ?`).
-  - Returns `{ success: true, data: { id, deleted: true } }` on success.
-  - Structured 404 response if plan does not exist.
-- [x] Safe Active Session Synchronization:
-  - Current-Plan Deletion: Deleting the currently open plan purges all 10 plan-related localStorage keys (`formData`, `leanCanvas`, `mvp`, `revenue`, `pitch`, `personas`, `competitors`, `generationErrors`, `currentPlanId`, `planPersistenceStatus`).
-  - Non-Current-Plan Deletion: Deleting any other saved plan leaves the active working session completely untouched.
-  - Metadata Update Synchronization: When the currently active plan is updated, `localStorage.formData` is synchronized with the new metadata values immediately.
-- [x] Frontend Lifecycle Management in `HistoryPage.js`:
-  - Added "Edit" action button opening a focused metadata editing modal.
-  - Added "Delete" action button opening an explicit confirmation modal with warning if the plan is currently loaded in active session.
-  - Added feedback notifications for edit and delete actions.
-  - Automatically handles pagination boundaries when deleting the last item on a page.
-- [x] Frontend Lifecycle Management in `DashboardPage.js`:
-  - Added "Edit" and "Delete" action buttons in the hero section for saved plans.
-  - Deleting the active plan from Dashboard clears localStorage and safely navigates to `/my-plans`.
-  - Editing plan details from Dashboard updates both database and local overview in real time.
-- [x] Created comprehensive test suite in `backend/tests/planLifecycle.test.js` (17 tests, Tests A through Q):
-  - Test A & B: PATCH updates metadata and preserves unspecified fields.
-  - Test C: PATCH rejects invalid/empty startupName (400 INVALID_INPUT).
-  - Test D & E: Timestamp handling (`updatedAt` advances, `createdAt` preserved).
-  - Test F: PATCH preserves all 6 generated modules.
-  - Test G: PATCH on non-existent plan ID returns 404.
-  - Test H, J, K & L: DELETE single plan isolation (deletes target plan without affecting others).
-  - Test I: DELETE non-existent plan ID returns 404.
-  - Test M: Current-plan deletion purges active localStorage session.
-  - Test N: Non-current-plan deletion preserves active session.
-  - Test O: Metadata update synchronization into active localStorage.
-  - Test P: Partial plan lifecycle (list, update, delete without error).
-  - Test Q: HTTP controller contracts for PATCH and DELETE.
-- [x] Updated `backend/package.json` test script to include `planLifecycle.test.js`.
-- [x] Full regression verification: all 13 backend test suites pass with 0 errors, backend syntax check passes, and frontend production build succeeds cleanly.
+- [x] **Repository Inspection & Current Architecture Audit**:
+  - Backend: Verified Express 5.1.0, `better-sqlite3` WAL mode, `PRAGMA foreign_keys = ON`, transactional `schema_migrations` runner.
+  - Dependencies: Verified `"google-auth-library": "^10.1.0"` is already installed in `backend/package.json`.
+  - Network & CORS: Identified `cors()` default wildcard (`origin: '*'`, `credentials: false`); verified need for explicit origin (`http://localhost:3000`) and `credentials: true` for HTTP-only session cookies.
+  - Storage: Mapped 10 active `localStorage` keys; audited current single-user, unauthenticated `/api/plans` endpoints.
+- [x] **Product Requirements Formalized**:
+  - **Anonymous First-Time Visitor**: Visitors generate exactly ONE complete AI startup plan without upfront registration.
+  - **No Regeneration on Signup**: When an anonymous user signs up / logs in after exploring their generated plan, the existing plan is claimed and attached to their new account without losing data or regenerating.
+  - **Primary Auth Provider**: Google OAuth ("Continue with Google") prioritized for frictionless onboarding.
+  - **Secondary Auth Provider**: Native Email/Password supported for universal accessibility.
+  - **Persistent Session**: Secure HTTP-only cookies (`startup_ai_session`) backed by SQLite `sessions` table (no auth tokens in localStorage).
+- [x] **Database & User Model Architecture**:
+  - Designed Migration `002_add_user_id_to_plans.sql` (preserving `001_create_plans_table.sql` completely intact).
+  - Designed `users` table: `id` (UUID), `email` (UNIQUE), `name`, `picture_url`, `auth_provider` ('google' | 'local'), `provider_subject_id`, `password_hash` (NULL for Google users), `created_at`, `updated_at`.
+  - Designed `sessions` table: `id` (cryptographic token), `user_id` (FK -> users.id CASCADE), `expires_at`, `created_at`.
+  - Designed `trial_sessions` table: `id` (UUID cookie), `plan_id` (FK -> plans.id), `ip_hash`, `created_at`.
+  - Added `user_id TEXT REFERENCES users(id) ON DELETE CASCADE` to `plans` (NULL for unowned anonymous trials, populated upon claim).
+  - Existing Phase 3 data automatically remains safe with `user_id = NULL`.
+- [x] **Anonymous Trial & Abuse Protection**:
+  - Anonymous trial session cookie (`startup_ai_trial`) issued on first unauthenticated visit.
+  - Server-side trial gatekeeper in `trial_sessions` tracks consumed trials by cookie and salted IP hash.
+  - Returns structured HTTP 403 `TRIAL_LIMIT_REACHED` if an anonymous visitor attempts a second generation run, inviting them to authenticate.
+- [x] **Trial-to-Account Plan Claiming Design**:
+  - Endpoint `POST /api/plans/claim` with `{ planId }`.
+  - Atomic ownership transfer: `UPDATE plans SET user_id = :userId WHERE id = :planId AND user_id IS NULL`.
+  - Retains all 6 generated modules, metadata, and timestamps without duplication.
+  - Attaches to either newly created accounts or existing user accounts seamlessly.
+- [x] **Endpoint Authorization Matrix**:
+  - `POST /api/plans`: Authenticated user -> user plan; Anonymous user -> trial plan (`user_id = NULL`) if under trial limit.
+  - `GET /api/plans`: Authenticated user -> only plans where `user_id = req.user.id`; Anonymous user -> empty or trial session only.
+  - `GET /api/plans/:id`: Accessible if owned by caller or if unowned trial plan; returns 404 if owned by another user (prevents ID enumeration).
+  - `PATCH /api/plans/:id` & `DELETE /api/plans/:id`: Strictly requires `user_id = req.user.id`.
+- [x] **Frontend Auth UX Architecture**:
+  - Designed `AuthContext` managing `{ user, isAuthenticated, isLoading, loginWithGoogle, loginWithEmail, signupWithEmail, logout, claimPlan }`.
+  - Designed `AuthModal` with prominent "Continue with Google" button, tabbed Email login/signup, and inline error feedback.
+  - Designed Dashboard "Save My Startup Plan" claim banner and Header user profile dropdown.
+- [x] **Defined Phase 4 Breakdown**:
+  - Chunk 4.1: Architecture Audit & Design (THIS CHUNK - COMPLETE)
+  - Chunk 4.2: Database Migration 002, User Model & Core Backend Auth Endpoints
+  - Chunk 4.3: Plan Ownership, Multi-User Isolation & Plan Claiming API
+  - Chunk 4.4: Frontend Auth UX, Google Sign-In & Dashboard Claim Flow
 
 ---
 
 ## 8. Next Planned Phase & Chunk
 
-**Phase 4: Pitch Deck Export & Sharing**
-- **Chunk 4.1 — Pitch Deck PDF & Slide Export**:
-  - Export pitch deck to formatted PDF document / presentation slides.
-  - Client-side or backend export pipeline.
+**Phase 4: Authentication & Multi-User Plan Architecture**
+- **Chunk 4.2 — Database Migration 002, User Model & Core Backend Auth Endpoints**:
+  - Execute migration `002_add_user_id_to_plans.sql`.
+  - Implement `userService.js` and `authService.js` (password hashing with Node `crypto.scrypt`, Google token verification with `google-auth-library`).
+  - Implement session management with secure HTTP-only cookies.
+  - Register `/api/auth/google`, `/api/auth/signup`, `/api/auth/login`, `/api/auth/logout`, and `/api/auth/me`.
+  - Verify with zero-dependency automated test suite.
 
 ---
 
@@ -185,24 +164,30 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 2.1: Robust Gemini JSON Parsing (Completed - `e0d7f83`)
   - Chunk 2.2: Rate Limiting & Retry/Backoff Strategy (Completed - `e87a12f`)
   - Chunk 2.3: Clean API / Partial Generation Errors (Completed - `52ecf78`)
-- **Phase 3: Backend Database Persistence (COMPLETED - Commit `5c6d58f`)**
+- **Phase 3: Backend Database Persistence (COMPLETED - Commit `c73a00a`)**
   - Chunk 3.1: Persistence Architecture & Database Foundation (Completed - `f68b6a4`)
   - Chunk 3.2: Connect Frontend Generation Flow to Persistence API (Completed - `d50406a`)
   - Chunk 3.3: Plan History / My Plans (Completed - `04eed8f`)
   - Chunk 3.4: Plan Detail / Loading / Re-opening (Completed - `5c6d58f`)
-  - Chunk 3.5: Update/Delete/Archive & Persistence Edge Cases (Completed)
-- **Phase 4: Pitch Deck Export & Sharing** (PDF / PowerPoint exports)
-- **Phase 5: Production Hardening, Test Suite Modernization & CI/CD**
+  - Chunk 3.5: Update/Delete/Archive & Persistence Edge Cases (Completed - `c73a00a`)
+- **Phase 4: Authentication & Multi-User Plan Architecture (IN PROGRESS)**
+  - Chunk 4.1: Authentication & Anonymous Trial Architecture Audit (Completed)
+  - Chunk 4.2: Database Migration 002, User Model & Core Backend Auth Endpoints
+  - Chunk 4.3: Plan Ownership, Multi-User Isolation & Plan Claiming API
+  - Chunk 4.4: Frontend Auth UX, Google Sign-In & Dashboard Claim Flow
+- **Phase 5: Pitch Deck Export & Sharing** (PDF / PowerPoint exports)
+- **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
 
 ---
 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `5c6d58f` (Milestone Chunk 3.4)
+- **Pre-Chunk Commit**: `c73a00ada2c4924b9beaa282cb9a8f6abf45f7a3` (feat: manage persisted plan lifecycle)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
-- **Phase 3 Status**: COMPLETED (Chunks 3.1, 3.2, 3.3, 3.4, 3.5 Completed)
+- **Phase 3 Status**: COMPLETED (Chunks 3.1 through 3.5 all verified and committed)
+- **Phase 4 Status**: IN PROGRESS (Chunk 4.1 Completed)
 
 ---
 

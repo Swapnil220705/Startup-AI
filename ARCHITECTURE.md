@@ -403,6 +403,294 @@ To avoid leaving stale data in the browser working state after mutations, the fo
 - **Accidental Deletion Prevention**: Deleting a plan from both `HistoryPage` and `DashboardPage` requires explicit confirmation through a styled modal dialog.
 - **Active Session Notice**: The deletion modal explicitly warns the user if the targeted plan is currently open in their active session.
 
+---
 
+## 9. Proposed Authentication & Anonymous Trial Architecture (Phase 4 Design)
 
+> [!IMPORTANT]
+> **Proposed / Phase 4 design — not yet implemented**
+> The following architecture has been audited and designed in Chunk 4.1. Implementation begins in Chunk 4.2.
 
+### 9.1 High-Level Authentication & Trial Flow
+
+```text
+Visitor arrives at Startup-AI
+       │
+       ├─► Wants to try immediately (Frictionless Onboarding)
+       │         │
+       │         ▼
+       │   Landing Page ──► Enter Idea (/start)
+       │         │
+       │         ▼
+       │   Server verifies/issues Anonymous Trial Cookie (`startup_ai_trial`)
+       │   AI Generation Pipeline runs (6 modules in parallel)
+       │   Plan persisted with `user_id = NULL` (UUID returned)
+       │         │
+       │         ▼
+       │   Full Dashboard (/dashboard) & Pitch Preview (/pitch-preview) accessible
+       │   Banner CTA: "✨ Free Trial Plan • Sign in to save permanently to your account"
+       │         │
+       │         ▼
+       │   User clicks "Save My Startup Plan" (or Sign In / My Plans)
+       │         │
+       │         ├─► Continue with Google (Primary, Instant)
+       │         └─► Email & Password (Secondary)
+       │         │
+       │         ▼
+       │   Authenticated Session Established (Secure HTTP-Only Cookie)
+       │   Backend executes atomic plan claim (`POST /api/plans/claim`)
+       │   `UPDATE plans SET user_id = :userId WHERE id = :planId AND user_id IS NULL`
+       │         │
+       │         ▼
+       │   Trial plan is now permanently owned by user in `/my-plans`!
+       │   (Zero regeneration, zero data loss, zero duplicate copies)
+       │
+       └─► Returning User / Direct Sign-In
+                 │
+                 ▼
+           Authenticate (Google or Email)
+                 │
+                 ▼
+           Access all owned plans via `/my-plans`
+```
+
+### 9.2 User & Account Model
+
+The database user model is designed with strict minimalism, storing only fields strictly required for authentication, display, and foreign key relationships:
+
+| Field | Type | Modifiers | Rationale |
+|---|---|---|---|
+| `id` | `TEXT` | `PRIMARY KEY NOT NULL` | Cryptographically random UUID v4, immutable internal reference for `plans.user_id` and `sessions.user_id`. |
+| `email` | `TEXT` | `NOT NULL UNIQUE` | Canonical lowercase email address used as the unique identity anchor. |
+| `name` | `TEXT` | `NULLABLE` | Display name populated from Google profile (`name`) or signup input; used for personalized header greeting. |
+| `picture_url` | `TEXT` | `NULLABLE` | Profile avatar URL from Google OAuth (`picture`); rendered in header profile dropdown. |
+| `auth_provider` | `TEXT` | `NOT NULL` | `'google'` or `'local'`. Prevents password brute-forcing against OAuth-only accounts. |
+| `provider_subject_id` | `TEXT` | `NULLABLE` | Google `sub` claim from ID token. Provides stable mapping even if the user updates their Google primary email. |
+| `password_hash` | `TEXT` | `NULLABLE` | Stored only for `'local'` users using Node's native `crypto.scrypt`. Strictly `NULL` for Google OAuth accounts. |
+| `created_at` | `TEXT` | `NOT NULL` | ISO-8601 UTC timestamp. |
+| `updated_at` | `TEXT` | `NOT NULL` | ISO-8601 UTC timestamp. |
+
+Unnecessary fields (such as enterprise roles, phone numbers, or organizational hierarchy) are explicitly omitted to prevent bloat.
+
+### 9.3 Database Evolution & Migration 002
+
+In adherence to project rules, `001_create_plans_table.sql` remains completely untouched. The schema evolves via `backend/db/migrations/002_add_user_id_to_plans.sql`:
+
+```sql
+-- 002_add_user_id_to_plans.sql
+-- Users, Sessions, Anonymous Trials & Multi-User Plan Ownership
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY NOT NULL,
+  email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  name TEXT,
+  picture_url TEXT,
+  auth_provider TEXT NOT NULL,
+  provider_subject_id TEXT,
+  password_hash TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_provider_sub ON users(auth_provider, provider_subject_id);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY NOT NULL,              -- 64-char crypto random token
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL,                  -- ISO-8601 UTC timestamp
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+
+CREATE TABLE IF NOT EXISTS trial_sessions (
+  id TEXT PRIMARY KEY NOT NULL,              -- UUID cookie value
+  plan_id TEXT REFERENCES plans(id) ON DELETE SET NULL,
+  ip_hash TEXT,                              -- Salted SHA-256 hash for abuse mitigation
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_trial_sessions_ip ON trial_sessions(ip_hash);
+
+-- Evolve plans table to support multi-user ownership
+ALTER TABLE plans ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE;
+
+CREATE INDEX IF NOT EXISTS idx_plans_user_id_created ON plans(user_id, created_at DESC);
+```
+
+#### Handling Existing Phase 3 Plans:
+In SQLite, `ALTER TABLE ... ADD COLUMN` sets existing rows to `NULL`. Plans with `user_id = NULL` are treated as unowned trial plans. This guarantees 100% backward compatibility with all 13 existing test suites and ensures no existing test fixtures break.
+
+### 9.4 Authentication Mechanisms: Google Primary + Email Secondary
+
+#### 1. Google OAuth (Primary)
+- **Zero New Heavy Backend Dependencies**: `"google-auth-library": "^10.1.0"` is **already installed** in `backend/package.json`.
+- **Frontend Flow**: Uses Google Identity Services (GIS) via official script or button (`google.accounts.id.renderButton`).
+- **Token Verification**: Frontend receives a signed Google ID token credential upon user consent and posts it to `POST /api/auth/google`.
+- **Backend Verification**:
+  ```javascript
+  const { OAuth2Client } = require('google-auth-library');
+  const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+  const ticket = await client.verifyIdToken({
+    idToken: credential,
+    audience: process.env.GOOGLE_CLIENT_ID
+  });
+  const payload = ticket.getPayload(); // sub, email, name, picture
+  ```
+- **Upsert Logic**: If user exists by `provider_subject_id` or `email`, update profile and create session; if new user, create user record and session.
+
+#### 2. Native Email & Password (Secondary)
+- **Zero Third-Party Vendor Lock-in**: Implemented using Node.js built-in `crypto` module (`crypto.scryptSync` / `crypto.randomBytes`).
+- **Endpoints**: `POST /api/auth/signup` and `POST /api/auth/login`.
+- **Validation**: Requires valid email format and password minimum length (8 characters).
+- **Password Hashing**: Salted scrypt key derivation with per-user cryptographic salt (`salt:derivedKey` format).
+
+### 9.5 Session Management & Security
+
+```text
+Browser                                                     Backend (Express)
+   │                                                               │
+   │ ── POST /api/auth/google (or /login) ───────────────────────► │
+   │                                                               │ 1. Verify credentials
+   │                                                               │ 2. Generate crypto session token
+   │                                                               │ 3. INSERT INTO sessions (...)
+   │ ◄── Set-Cookie: startup_ai_session=xyz; HttpOnly; SameSite=Lax │
+   │                                                               │
+   │ ── GET /api/plans (Cookie automatically sent) ──────────────► │
+   │                                                               │ 1. Read req.cookies.startup_ai_session
+   │                                                               │ 2. SELECT * FROM sessions WHERE id = ?
+   │                                                               │ 3. Verify expires_at > now
+   │                                                               │ 4. Attach req.user
+   │ ◄── HTTP 200 { plans: [...] } ─────────────────────────────── │
+```
+
+#### Security Architectural Invariants:
+1. **No Tokens in `localStorage`**: Storing auth tokens in `localStorage` exposes them to XSS attacks from third-party scripts. The session token is stored exclusively in an **HTTP-only, SameSite=Lax, Secure** (in production) cookie (`startup_ai_session`).
+2. **Instant Server-Side Revocation**: Logout is not merely a client-side deletion; `POST /api/auth/logout` deletes the session row from SQLite and clears the cookie.
+3. **CORS & Credentials**:
+   - Backend Express CORS updated from `cors()` to:
+     ```javascript
+     app.use(cors({
+       origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+       credentials: true
+     }));
+     ```
+   - Frontend Axios configured with `withCredentials: true`.
+4. **Session Expiry**: Sessions are valid for 30 days (`expires_at = now + 30 days`), supporting seamless persistent login.
+
+### 9.6 Anonymous Trial Architecture (One Free Plan Gate)
+
+To honor the core product decision:
+> **"A visitor should NOT be forced to create an account before experiencing the product. The first complete AI-generated startup plan should be available without authentication."**
+
+#### Abuse Prevention & Limit Enforcement Mechanism:
+1. **Trial Cookie**: On initial visit or generation attempt by an unauthenticated user, the server assigns a cryptographically random anonymous trial ID (`startup_ai_trial`) via HTTP-only cookie.
+2. **Server-Side Tracking (`trial_sessions`)**:
+   - Stores `(id, plan_id, ip_hash, created_at)`.
+   - `ip_hash` is a salted SHA-256 digest of client IP, preventing plain IP logging while providing secondary rate limiting against cookie wiping.
+3. **Generation Gating**:
+   - When `POST /api/plans` (or generation endpoints) is requested:
+     - If user is authenticated (`req.user` present): generation and persistence proceed under user account.
+     - If user is anonymous:
+       - Check `trial_sessions` for `trial_id` or `ip_hash`.
+       - If no plan has been generated yet for this trial session: allow generation and record `plan_id` in `trial_sessions`.
+       - If a plan has ALREADY been generated for this trial session: abort with structured HTTP 403:
+         ```json
+         {
+           "success": false,
+           "error": {
+             "code": "TRIAL_LIMIT_REACHED",
+             "message": "You have used your free anonymous startup plan trial. Please sign in or create a free account to generate more plans and save your work."
+           }
+         }
+         ```
+4. **No Premature Gatekeeping**: The user enters their idea, watches the parallel generation progress, explores all tabs on `/dashboard`, and previews their pitch deck without ever seeing a login screen.
+
+### 9.7 Trial-to-Account Plan Claiming Flow
+
+When the anonymous user clicks "Save My Startup Plan" on the dashboard, the trial plan is claimed without regeneration:
+
+```text
+Step 1: Anonymous generation completes -> plan persisted in DB with `id = <UUID>` and `user_id = NULL`.
+Step 2: Client holds `currentPlanId = <UUID>`. Dashboard shows:
+        "✨ Free Trial Plan • Sign in to save permanently to your account [ Save My Plan ]"
+Step 3: User clicks "Save My Plan" -> AuthModal opens -> User clicks "Continue with Google".
+Step 4: Google authentication completes -> Backend sets session cookie.
+Step 5: Frontend (or backend auth callback) triggers:
+        POST /api/plans/claim
+        Payload: { planId: localStorage.getItem('currentPlanId') }
+Step 6: Backend verification:
+        a. Verify req.user exists (authenticated session).
+        b. Fetch plan where id = planId.
+        c. Assert plan.user_id IS NULL (must be unowned trial plan).
+        d. Execute: UPDATE plans SET user_id = ?, updated_at = ? WHERE id = ? AND user_id IS NULL.
+Step 7: Plan is now owned by the user!
+Step 8: Dashboard updates status to "Saved to Account".
+        Navigating to /my-plans immediately displays the claimed plan.
+```
+
+#### Edge Case Handling:
+- **Existing User Login**: If an existing user creates a trial plan while logged out and logs into their existing account, the trial plan is claimed and added to their existing plan library.
+- **Refresh Before Claim**: `currentPlanId` remains in `localStorage` and `trial_sessions`; the claim banner remains visible after page reload.
+- **Claim Failure Recovery**: If network drops during claim, the plan remains unowned (`user_id = NULL`) in the database; the UI surfaces an actionable "Retry Save" button.
+- **Already-Claimed Plan**: If a user attempts to claim a plan that already has `user_id !== NULL`, the backend returns HTTP 409 `PLAN_ALREADY_CLAIMED`.
+
+### 9.8 Endpoint Authorization Matrix
+
+| Endpoint | Anonymous Request | Authenticated Request |
+|---|---|---|
+| `POST /api/plans` | Allowed if under 1-trial limit; creates plan with `user_id = NULL`. If trial used, returns `403 TRIAL_LIMIT_REACHED`. | Creates plan with `user_id = req.user.id`. |
+| `GET /api/plans` | Returns `{ plans: [], total: 0 }` (or active trial plan only). Prevents browsing other users' plans. | Returns `SELECT ... WHERE user_id = req.user.id ORDER BY created_at DESC LIMIT ? OFFSET ?`. |
+| `GET /api/plans/:id` | Allowed if `user_id = NULL` (trial plan preview). If plan is owned by a user, returns `404 PLAN_NOT_FOUND` (prevents ID enumeration). | Allowed if `user_id = req.user.id` or `user_id = NULL`. Returns `404` if owned by another user. |
+| `PATCH /api/plans/:id` | `401 UNAUTHORIZED` (anonymous users cannot mutate persisted plans; must claim first). | Allowed if `user_id = req.user.id`. Returns `404` if owned by another user. |
+| `DELETE /api/plans/:id`| `401 UNAUTHORIZED`. | Allowed if `user_id = req.user.id`. Returns `404` if owned by another user. |
+| `POST /api/plans/claim`| `401 UNAUTHORIZED`. | Allowed if plan exists and `user_id = NULL`. Updates `user_id = req.user.id`. |
+
+### 9.9 Frontend Authentication UX & State Architecture
+
+#### 1. `AuthContext` (`src/utils/AuthContext.js`)
+Centralizes authentication state and wraps the entire application:
+```javascript
+const AuthContext = createContext({
+  user: null,             // { id, email, name, pictureUrl } or null
+  isAuthenticated: false,
+  isLoading: true,        // True during initial session bootstrap
+  loginWithGoogle: async (credential) => {},
+  loginWithEmail: async (email, password) => {},
+  signupWithEmail: async (email, password, name) => {},
+  logout: async () => {},
+  claimCurrentPlan: async (planId) => {}
+});
+```
+
+#### 2. Session Hydration on Mount
+When the React application boots, `AuthContext` dispatches `GET /api/auth/me` with credentials:
+- If cookie valid: sets `user` and `isAuthenticated = true`.
+- If 401: sets `user = null` and `isAuthenticated = false`.
+- Sets `isLoading = false` (no blocking white screen; pages render immediately).
+
+#### 3. Navigation Header (`Header.js`) Integration
+- **Unauthenticated**: Renders clean "Sign In" button and "Get Started" CTA.
+- **Authenticated**: Renders user avatar (Google profile image or initials), user display name, and an accessible dropdown menu with:
+  - "My Plans" (with count badge)
+  - "New Plan"
+  - Theme toggle
+  - "Sign Out" action
+
+#### 4. `AuthModal` Component
+- Modal accessible from Header "Sign In", Dashboard "Save Plan" banner, or trial limit trigger.
+- **Top Section**: High-visibility "Continue with Google" button with official Google branding.
+- **Divider**: Subtle "or continue with email" separator.
+- **Bottom Section**: Tabbed Email Login / Signup form with real-time field validation, accessible error alerts, and clean loading spinners.
+
+#### 5. Dashboard Trial Banner
+When `DashboardPage` detects an active plan where `persistenceStatus === 'saved'` but `user === null`:
+- Displays a dismissible top banner:
+  > **✨ Free Trial Plan** — Your complete AI startup plan is ready! Sign in to save it permanently to your account.
+  > `[ Save My Plan ]`
+- Clicking "Save My Plan" opens `AuthModal`; upon successful login, the claim hook automatically executes and transitions the banner to:
+  > **✅ Plan Saved to Account** — You can now access this plan anytime from My Plans.
+
+---
