@@ -24,6 +24,7 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isLoading) return; // Prevent duplicate submission
     setIsLoading(true);
 
     try {
@@ -35,7 +36,9 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
         'pitch',
         'personas',
         'competitors',
-        'generationErrors'
+        'generationErrors',
+        'currentPlanId',
+        'planPersistenceStatus'
       ];
       GENERATION_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
 
@@ -66,6 +69,14 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
 
       const successfulModules = [];
       const failedModules = [];
+      const persistedModules = {
+        leanCanvas: null,
+        mvp: null,
+        revenue: null,
+        pitch: null,
+        personas: null,
+        competitors: null
+      };
 
       settledResults.forEach((result, idx) => {
         const ep = endpoints[idx];
@@ -74,12 +85,14 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
           successfulModules.push(ep.label);
 
           if (ep.key === 'leanCanvas') {
+            persistedModules.leanCanvas = resData;
             localStorage.setItem('leanCanvas', JSON.stringify(resData));
           } else if (ep.key === 'mvp') {
             const mvpRes = result.value;
+            persistedModules.mvp = mvpRes.data;
             localStorage.setItem('mvp', JSON.stringify(mvpRes.data));
           } else if (ep.key === 'revenue') {
-            localStorage.setItem('revenue', JSON.stringify([
+            const revenueItems = [
               {
                 model: "Primary Revenue Stream",
                 description: resData.revenueStreams,
@@ -90,13 +103,20 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
                 description: resData.pricingStrategy,
                 projection: "Growth Phase"
               }
-            ]));
+            ];
+            persistedModules.revenue = revenueItems;
+            localStorage.setItem('revenue', JSON.stringify(revenueItems));
           } else if (ep.key === 'pitch') {
+            persistedModules.pitch = resData;
             localStorage.setItem('pitch', JSON.stringify(resData));
           } else if (ep.key === 'personas') {
-            localStorage.setItem('personas', JSON.stringify(resData.personas || resData));
+            const personasData = resData.personas || resData;
+            persistedModules.personas = personasData;
+            localStorage.setItem('personas', JSON.stringify(personasData));
           } else if (ep.key === 'competitors') {
-            localStorage.setItem('competitors', JSON.stringify(resData.competitors || resData));
+            const competitorsData = resData.competitors || resData;
+            persistedModules.competitors = competitorsData;
+            localStorage.setItem('competitors', JSON.stringify(competitorsData));
           }
         } else {
           const errMessage = result.reason?.response?.data?.error?.message ||
@@ -120,13 +140,53 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
       localStorage.setItem('formData', JSON.stringify(formData));
 
       // Case B: Partial generation (1 to 5 succeeded)
+      let genErrorsObj = null;
       if (failedModules.length > 0) {
-        localStorage.setItem('generationErrors', JSON.stringify({
+        genErrorsObj = {
           failedModules: failedModules.map(m => m.label),
           successfulModules: successfulModules
-        }));
+        };
+        localStorage.setItem('generationErrors', JSON.stringify(genErrorsObj));
       } else {
         localStorage.removeItem('generationErrors');
+      }
+
+      // Step 3: Persist plan to backend database via POST /api/plans
+      const isPartial = failedModules.length > 0;
+      const planPayload = {
+        startupName: formData.name,
+        industry: formData.domain || '',
+        problem: formData.problem || '',
+        solution: formData.solution || '',
+        targetAudience: formData.audience || '',
+        usp: formData.usp || '',
+        leanCanvas: persistedModules.leanCanvas,
+        mvp: persistedModules.mvp,
+        revenue: persistedModules.revenue,
+        pitch: persistedModules.pitch,
+        personas: persistedModules.personas,
+        competitors: persistedModules.competitors,
+        generationStatus: isPartial ? 'partial' : 'completed',
+        generationErrors: genErrorsObj
+      };
+
+      try {
+        const persistRes = await axios.post('http://localhost:4000/api/plans', planPayload);
+        const serverPlanId = persistRes.data?.data?.id;
+        if (serverPlanId) {
+          localStorage.setItem('currentPlanId', serverPlanId);
+          localStorage.setItem('planPersistenceStatus', 'saved');
+          console.log(`[Persistence] Plan persisted successfully with ID: ${serverPlanId}`);
+        } else {
+          localStorage.setItem('planPersistenceStatus', 'save_failed');
+          localStorage.removeItem('currentPlanId');
+          console.warn('[Persistence] Plan persisted but server did not return an ID');
+        }
+      } catch (persistErr) {
+        // If database persistence fails, preserve generated localStorage data and flag save_failed
+        console.error('[Persistence] Failed to persist plan to server:', persistErr.message);
+        localStorage.setItem('planPersistenceStatus', 'save_failed');
+        localStorage.removeItem('currentPlanId');
       }
 
       setIsLoading(false);
@@ -537,10 +597,10 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
             
             <button
               type="submit"
-              disabled={!formData.name || !formData.problem || !formData.solution || !formData.audience || !formData.usp}
+              disabled={isLoading || !formData.name || !formData.problem || !formData.solution || !formData.audience || !formData.usp}
               className="group bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-12 py-5 rounded-2xl text-xl font-bold hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-xl hover:shadow-2xl transform hover:scale-105 flex items-center space-x-3 mx-auto disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
-              <span>Generate Business Plan</span>
+              <span>{isLoading ? 'Generating Business Plan...' : 'Generate Business Plan'}</span>
               <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
             </button>
             

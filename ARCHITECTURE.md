@@ -188,10 +188,50 @@ CREATE INDEX IF NOT EXISTS idx_plans_created_at ON plans(created_at DESC);
 
 ---
 
-## 5. Storage Strategy & Frontend Boundary
+## 5. Storage Strategy & Frontend Boundary (Chunk 3.2)
 
-- **Chunk 3.1 Scope**: Establishes the backend persistence foundation, database, migrations, service layer, and verified REST endpoints.
-- **Client Boundary**: Frontend `localStorage` remains active and untouched in Chunk 3.1 to preserve uninterrupted user workflows.
-- **Upcoming Migration (Chunk 3.2 & 3.3)**:
-  - Chunk 3.2: Connect `IdeaInputPage.js` to automatically dispatch `POST /api/plans` upon generation completion, storing the returned plan ID.
-  - Chunk 3.3: Introduce Plan History UI, allowing users to browse previously generated plans and load them into the Dashboard.
+### 5.1 Transitional Architecture
+To ensure seamless product reliability without breaking existing workflows or splitting state across half-migrated sources, Chunk 3.2 establishes a dual-tier transition architecture:
+1. **Server Database (`plans` table in SQLite)**: The persistent source of truth for all generated startup plans. Every successful or partial generation is saved to the database via `POST /api/plans` and assigned a server-generated UUID v4.
+2. **Client Browser (`localStorage`)**: The active, current-session state layer for the dashboard and pitch preview. `localStorage` continues to hold the current session's generated modules to avoid jarring state disruptions.
+
+### 5.2 Generation to Persistence Flow
+```text
+User Submits Idea Form (IdeaInputPage)
+         │
+         │  1. Purges Stale Keys (including currentPlanId and planPersistenceStatus)
+         │  2. Dispatches 6 parallel Gemini requests via Promise.allSettled
+         ▼
+Settled Results Evaluation
+   ├─► 0/6 Succeeded: Halts navigation, alerts user, NO plan created, NO POST /api/plans
+   └─► 1-6 Succeeded:
+         │
+         ├─► Writes successful modules to localStorage (never fabricating missing modules)
+         ├─► Records generationErrors metadata if 1-5 succeeded
+         ├─► Constructs validated plan payload adhering to schema
+         │
+         ▼
+   POST /api/plans (Backend Persistence)
+         ├─► Success:
+         │     Stores server-generated UUID in `localStorage.currentPlanId`
+         │     Sets `localStorage.planPersistenceStatus = 'saved'`
+         └─► Failure:
+               Preserves all local generated data (never lost!)
+               Removes `currentPlanId` (never stores fake IDs)
+               Sets `localStorage.planPersistenceStatus = 'save_failed'`
+         │
+         ▼
+   navigate('/dashboard')
+         │
+         ├─► Reads current session data from localStorage
+         ├─► Reads `currentPlanId` and `planPersistenceStatus`
+         ├─► Asynchronously verifies plan existence via `GET /api/plans/:id`
+         ├─► Displays status badge ("Saved to Database" or "Session Only")
+         └─► Displays non-intrusive warning notice if database persistence failed
+```
+
+### 5.3 Storage Key Lifecycle
+- **Keys Managed**: `leanCanvas`, `mvp`, `revenue`, `pitch`, `personas`, `competitors`, `generationErrors`, `currentPlanId`, `planPersistenceStatus`.
+- **Stale Data Protection**: All 9 keys are wiped at the start of every new generation run, preventing previous plan IDs or modules from masquerading as current results.
+- **Double-Submit Protection**: The form submission is guarded with `if (isLoading) return;` and the CTA button is disabled while requests are in flight.
+

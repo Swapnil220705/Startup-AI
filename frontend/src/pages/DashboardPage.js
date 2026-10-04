@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   AlertTriangle
 } from 'lucide-react';
+import axios from 'axios';
 import Header from '../components/Header';
 import {
   OverviewTab,
@@ -29,9 +30,31 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
   const [loading, setLoading] = useState(true);
   const [isVisible, setIsVisible] = useState(false);
   const [generationErrors, setGenerationErrors] = useState(null);
+  const [currentPlanId, setCurrentPlanId] = useState(null);
+  const [persistenceStatus, setPersistenceStatus] = useState('not_saved');
 
   useEffect(() => {
     try {
+      const storedPlanId = localStorage.getItem('currentPlanId') || null;
+      const storedPersistenceStatus = localStorage.getItem('planPersistenceStatus') || (storedPlanId ? 'saved' : 'not_saved');
+      setCurrentPlanId(storedPlanId);
+      setPersistenceStatus(storedPersistenceStatus);
+
+      // Verify persisted plan exists on server if an ID is present
+      if (storedPlanId) {
+        axios.get(`http://localhost:4000/api/plans/${storedPlanId}`)
+          .then((res) => {
+            if (res.data?.success && res.data?.data) {
+              setPersistenceStatus('saved');
+            } else {
+              setPersistenceStatus('save_failed');
+            }
+          })
+          .catch((err) => {
+            console.warn('[Dashboard] Plan verification failed on server:', err.message);
+            setPersistenceStatus('save_failed');
+          });
+      }
       // Get form data for overview
       const formData = JSON.parse(localStorage.getItem('formData') || '{}');
       
@@ -178,6 +201,21 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
                     <CheckCircle2 className="w-4 h-4" />
                     <span>{completedTabs.length} sections completed</span>
                   </div>
+                  {persistenceStatus === 'saved' && (
+                    <div 
+                      className={`inline-flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-semibold ${isDark ? 'bg-blue-900/30 text-blue-400 border border-blue-800' : 'bg-blue-100 text-blue-800 border border-blue-200'}`}
+                      title={currentPlanId ? `Persisted Plan ID: ${currentPlanId}` : 'Saved to database'}
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-blue-500" />
+                      <span>Saved to Database</span>
+                    </div>
+                  )}
+                  {persistenceStatus === 'save_failed' && (
+                    <div className={`inline-flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-semibold ${isDark ? 'bg-amber-900/30 text-amber-400 border border-amber-800' : 'bg-amber-100 text-amber-800 border border-amber-200'}`}>
+                      <AlertTriangle className="w-4 h-4 text-amber-500" />
+                      <span>Session Only (Not Saved to DB)</span>
+                    </div>
+                  )}
                 </div>
                 <h1 className="text-4xl md:text-5xl font-bold mb-4">
                   <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
@@ -296,6 +334,16 @@ const DashboardPage = ({ navigate, isDark, toggleTheme }) => {
           {/* Enhanced Main Content */}
           <div className="flex-1">
             <div className={`transition-all duration-500 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
+              {/* Persistence Failure Banner */}
+              {persistenceStatus === 'save_failed' && (
+                <div className={`mb-6 p-4 rounded-2xl border ${isDark ? 'bg-amber-950/20 border-amber-800/60 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-900'} text-sm flex items-center justify-between`}>
+                  <div className="flex items-center space-x-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                    <span>Note: Your startup plan is active in this browser session, but could not be saved to the server database.</span>
+                  </div>
+                </div>
+              )}
+
               {/* Partial Generation Notification Banner */}
               {generationErrors && generationErrors.failedModules?.length > 0 && (
                 <div className={`mb-8 p-6 rounded-3xl border ${isDark ? 'bg-amber-950/30 border-amber-800 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-900'} shadow-lg backdrop-blur-sm`}>
