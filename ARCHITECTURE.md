@@ -715,3 +715,148 @@ When `DashboardPage` detects an active persisted trial plan (`planPersistenceSta
 - Once claimed, transitions banner to "Saved to Your Account" and enables My Plans access.
 
 ---
+
+## 10. Phase 5 Proposed Architecture: Pitch Deck Export & Sharing (Audit Findings)
+
+> [!IMPORTANT]
+> **ARCHITECTURE AUDIT STATUS: PROPOSED (NOT YET IMPLEMENTED)**
+> The architectural designs in this section represent the audited and approved technical blueprint for Phase 5. No Phase 5 application code, dependencies, or database migrations have been implemented yet. Existing Phase 1–4 behavior remains the active implementation baseline.
+
+### 10.1 Current System Baseline & Asset Reusability
+
+#### What Already Exists (Reusable)
+1. **Multi-Module Presentation Data**:
+   - The database (`plans` table) already stores the full canonical JSON representation of all 6 modules (`lean_canvas`, `mvp`, `revenue`, `pitch`, `personas`, `competitors`) alongside intake fields (`startup_name`, `industry`, `problem`, `solution`, `target_audience`, `usp`).
+2. **Pitch Deck UI Composition (`src/pages/PitchPreviewPage.js`)**:
+   - Assembles a 7-slide investor presentation:
+     - Slide 1: Title Slide (`startupName`, `usp`, `elevatorPitch`)
+     - Slide 2: Problem → Solution (`problem`, `solution`)
+     - Slide 3: Market Opportunity (`targetAudience`, `customerSegments`)
+     - Slide 4: Product Overview (`mvp.coreFeatures`)
+     - Slide 5: Monetization (`revenue` stream list with models and projections)
+     - Slide 6: Competition & Market Position (`usp`, `competitors` with differentiators)
+     - Slide 7: Next Steps (`elevatorPitch`, static launch vectors)
+3. **Export Tab UI Skeleton (`src/components/DashboardTabs.js`)**:
+   - Contains placeholder cards for "Business Plan PDF", "Pitch Deck", "Financial Model", "Executive Summary", and "Share Link".
+4. **Authorization Infrastructure (`backend/services/planService.js`)**:
+   - Proven `getPlanForRequester(id, { userId, trialToken })` pattern enforcing strict ownership and trial access boundaries.
+
+#### What Is Missing
+1. **PDF Generation Engine**: Neither backend nor frontend contains PDF libraries or `@media print` style definitions.
+2. **Database Sharing Entity**: No database table exists to store, track, or revoke public share links.
+3. **Sharing Endpoints & Public Routes**: No backend routes exist under `/api/plans/:id/share` or `/api/shared/:token`, and no public frontend route exists under `/share/:token`.
+
+---
+
+### 10.2 Recommended PDF Export Architecture
+
+#### 1. Client-Side vs. Server-Side Evaluation
+
+| Architecture | Pros | Cons | Verdict for Startup-AI |
+|---|---|---|---|
+| **Server-Side Headless (Puppeteer / Playwright)** | Exact pixel-perfect Chromium rendering. | Adds 200MB+ Chromium binary, consumes 150–300MB RAM per render, crashes low-memory VPS/serverless, fragile Docker dependencies (`libnss3`, etc.). | **REJECTED** for current stack. Extreme operational overhead. |
+| **Server-Side Node PDFKit** | Lightweight (<10MB), fast, no browser dependency. | Requires manual programmatic coordinate drawing; difficult to match responsive Tailwind typography and cards. | **REJECTED** as primary export. High maintenance effort. |
+| **Client-Side DOM-to-Canvas (`html2canvas` + `jsPDF`)** | Simple client capture. | Produces rasterized, blurry bitmap PDFs with huge file sizes (5–20MB); text is non-selectable and non-searchable; fragile on mobile. | **REJECTED**. Unprofessional output. |
+| **Client-Side Print CSS (`@media print`) + Declarative Vector PDF** | 0 KB added server bloat, crisp selectable vector text, native browser print-to-PDF, zero deployment dependencies, works on all platforms. | Cannot silently auto-download without user print dialog on pure CSS approach; declarative requires formatted layout templates. | **RECOMMENDED**. Dual strategy provides highest reliability with zero server overhead. |
+
+#### 2. Selected PDF Architecture: Dual Vector & Print Engine
+- **Primary Mechanism**: Polished CSS Print Stylesheet (`@media print`) tailored for `/pitch-preview` (landscape slides) and `/dashboard` (portrait business plan).
+  - Strips navigation headers, background noise, and interactive buttons.
+  - Enforces explicit page breaks (`break-inside: avoid; page-break-after: always`).
+  - Vector-sharp text, preserved colors, and native browser PDF output.
+- **Direct Download Enhancer**: Lightweight client-side vector generator (e.g. `pdfmake` or standalone print iframe helper) providing 1-click "Download PDF" without server load.
+- **Export Scope**:
+  - **Pitch Deck PDF**: 7-slide landscape presentation deck matching `PitchPreviewPage`.
+  - **Full Business Plan PDF**: Formatted multi-page portrait document covering Executive Summary, Lean Canvas, MVP, Revenue, Personas, and Competitors.
+- **Storage Strategy**: **Stateless On-Demand Generation (Zero Binary Storage)**. PDFs are generated dynamically and delivered directly. No binary BLOBs stored in SQLite; zero server disk clutter.
+- **Export Authorization**: Strictly adheres to Phase 4.3 rules:
+  - Authenticated owner: allowed for owned plans.
+  - Anonymous trial visitor: allowed for their active trial plan matching `startup_ai_trial` cookie.
+  - Unauthorized third parties: safe HTTP 404 `PLAN_NOT_FOUND`.
+
+---
+
+### 10.3 Recommended Link Sharing Architecture
+
+#### 1. Sharing Security & Token Model
+- **Token Design**: Cryptographically random 256-bit token (`crypto.randomBytes(32).toString('hex')` -> 64 characters).
+- **Entropy Guarantee**: Brute-force resistance of $2^{256}$ possibilities; guessing is mathematically infeasible.
+- **Raw Plan UUID Isolation**: Public URLs never expose the internal database UUID of the plan (`/share/:token`, NOT `/share/:planId`).
+- **SEO & Privacy Guard**: Public share endpoint sends HTTP header:
+  ```http
+  X-Robots-Tag: noindex, nofollow, noarchive
+  ```
+- **Logging Sanitization**: Share tokens are truncated/masked in server access logs to prevent leakage in telemetry.
+
+#### 2. Product Policy: Authentication Requirement for Sharing
+- **Anonymous Trial Policy**: Creating a public share link **requires account authentication**.
+  - *Rationale*: Anonymous trial users have no durable credentials beyond a transient browser cookie. If they share a link and lose their cookie, they lose the ability to manage or revoke the link. Requiring 1-click Google or Email authentication before generating a public share link protects founder privacy and creates a natural, high-intent product conversion loop.
+  - *UX Trigger*: Clicking "Share Link" while unauthenticated opens `AuthModal` with contextual copy: *"Sign in to save and share your startup plan with investors."* Once authenticated and claimed, the share link is created immediately.
+
+#### 3. Share Lifecycle: Dynamic vs. Snapshot
+- **Selected Model: Dynamic Read-Only Sharing**:
+  - The public share endpoint retrieves the current persisted state of the parent plan.
+  - Typo fixes or metadata updates made by the owner immediately reflect in the shared view without requiring re-sharing.
+  - If the owner revokes the share (`revoked_at IS NOT NULL`) or deletes the plan, subsequent public requests return safe HTTP 404 `SHARE_NOT_FOUND`.
+
+#### 4. Sanitization Guarantees (Zero Data Leakage)
+The public payload returned by `GET /api/shared/:token` strictly excludes:
+- `user_id`, owner email, owner name, owner avatar
+- Session cookies, trial cookies, authentication headers
+- Edit, delete, and persistence actions
+- `generation_errors` and internal status flags
+
+---
+
+### 10.4 Proposed Database Schema (Migration 003)
+
+```sql
+-- 003_create_plan_shares_table.sql
+CREATE TABLE IF NOT EXISTS plan_shares (
+  id TEXT PRIMARY KEY NOT NULL,
+  plan_id TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  share_token TEXT NOT NULL UNIQUE,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  view_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  revoked_at TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_shares_token ON plan_shares(share_token);
+CREATE INDEX IF NOT EXISTS idx_plan_shares_plan_id ON plan_shares(plan_id);
+CREATE INDEX IF NOT EXISTS idx_plan_shares_user_id ON plan_shares(user_id);
+```
+
+---
+
+### 10.5 Proposed Share API Contract
+
+| Endpoint | Method | Auth Required | Purpose |
+|---|---|---|---|
+| `/api/plans/:id/share` | `POST` | Yes (`requireAuth`) | Idempotently creates or returns existing active share token for plan owned by `req.user.id`. |
+| `/api/plans/:id/share` | `DELETE` | Yes (`requireAuth`) | Revokes the active share token for the specified plan (`revoked_at = CURRENT_TIMESTAMP`, `is_active = 0`). |
+| `/api/shared/:token` | `GET` | No (Public, rate-limited) | Validates active share token and returns sanitized, read-only plan presentation data. |
+
+---
+
+### 10.6 Proposed Phase 5 Implementation Breakdown
+
+1. **Chunk 5.1 — Export & Sharing Architecture Audit** (COMPLETED)
+   - Comprehensive audit of data structures, UI components, dependencies, security models, and deployment constraints.
+2. **Chunk 5.2 — Pitch Deck & Business Plan PDF Export Engine**
+   - Implement print stylesheet rules (`@media print`) and client-side vector PDF generation on `PitchPreviewPage` and `DashboardTabs`.
+   - Wire "Download PDF" and "Pitch Deck" export actions with proper loading and progress indicators.
+3. **Chunk 5.3 — Plan Sharing Database Foundation & Backend API**
+   - Migration 003 (`plan_shares` table).
+   - Endpoints: `POST /api/plans/:id/share`, `DELETE /api/plans/:id/share`, `GET /api/shared/:token`.
+   - Rate limiting, token validation, and error sanitization.
+4. **Chunk 5.4 — Public Shareable Presentation Page & Viral Growth UX**
+   - Dedicated route `/share/:token` and component `SharedPitchPage`.
+   - Branded read-only presentation viewer with slide navigation and "Create Your Own Startup Plan" CTA.
+5. **Chunk 5.5 — Dashboard & Pitch Preview Share Management UX**
+   - "Share Link" modal on `DashboardTabs` and `PitchPreviewPage` with 1-click clipboard copy, QR code, and revocation controls.
+   - Comprehensive integration tests and end-to-end verification.
+
+---
+
