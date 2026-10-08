@@ -41,6 +41,7 @@ import {
   Pause,
   RotateCcw
 } from 'lucide-react';
+import { normalizePlanData, triggerPrintWithTitle } from '../utils/exportHelpers';
 
 export const OverviewTab = ({ data, isDark }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -725,18 +726,21 @@ export const PersonasTab = ({ data, isDark }) => {
   );
 };
 
-export const ExportTab = ({ navigate, isDark }) => {
+export const ExportTab = ({ data, navigate, isDark }) => {
   const [isExporting, setIsExporting] = useState(false);
   
-  const handleExport = async (type) => {
+  const handleExportBusinessPlan = () => {
     setIsExporting(true);
-    // Simulate export process
+    const normalized = normalizePlanData(data);
+    const safeName = (normalized.name || 'Startup').replace(/[^a-zA-Z0-9_-]/g, '_');
+    triggerPrintWithTitle(`${safeName}-Business-Plan`, 'portrait');
     setTimeout(() => {
       setIsExporting(false);
-      if (type === 'pitch') {
-        navigate('/pitch-preview');
-      }
-    }, 2000);
+    }, 500);
+  };
+
+  const handleNavigatePitchDeck = () => {
+    navigate('/pitch-preview');
   };
 
   return (
@@ -752,7 +756,7 @@ export const ExportTab = ({ navigate, isDark }) => {
               Export Your Business Plan
             </h2>
             <p className={`text-lg ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-              Share your vision with investors and stakeholders
+              Save as PDF or share your vision with investors and stakeholders
             </p>
           </div>
         </div>
@@ -767,13 +771,17 @@ export const ExportTab = ({ navigate, isDark }) => {
               <FileText className="w-10 h-10 text-white" />
             </div>
             <h3 className="text-xl font-bold mb-3">Business Plan PDF</h3>
-            <p className={`text-sm mb-6 ${isDark ? 'text-gray-400' : 'text-gray-600'} leading-relaxed`}>
-              Download a comprehensive PDF document with all sections including executive summary, market analysis, and financial projections
+            <p className={`text-sm mb-4 ${isDark ? 'text-gray-400' : 'text-gray-600'} leading-relaxed`}>
+              Export a comprehensive, portrait business plan document ready to save as PDF via your browser's print dialog.
             </p>
+            <div className={`p-3 rounded-xl mb-6 text-xs text-left ${isDark ? 'bg-gray-700/40 text-gray-300' : 'bg-gray-50 text-gray-600'}`}>
+              <span className="font-semibold block mb-1">Print to PDF Guide:</span>
+              Opens browser print preview. Select destination "Save as PDF" for clean portrait output.
+            </div>
             
             {/* Features */}
             <div className="space-y-2 mb-6">
-              {['Executive Summary', 'Market Analysis', 'Financial Projections', 'Competitive Analysis'].map((feature, index) => (
+              {['Executive Summary & Overview', 'Problem & Solution Fit', 'Lean Canvas & Target Personas', 'MVP, Pricing & Competitors'].map((feature, index) => (
                 <div key={index} className="flex items-center space-x-2 text-sm">
                   <CheckCircle className="w-4 h-4 text-green-500" />
                   <span className={`${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{feature}</span>
@@ -782,22 +790,17 @@ export const ExportTab = ({ navigate, isDark }) => {
             </div>
             
             <button 
-              onClick={() => handleExport('pdf')}
+              onClick={handleExportBusinessPlan}
               disabled={isExporting}
               className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+              title="Open print dialog to save as PDF"
             >
-              {isExporting ? (
-                <>
-                  <RotateCcw className="w-4 h-4 animate-spin" />
-                  <span>Generating...</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4" />
-                  <span>Download PDF</span>
-                </>
-              )}
+              <Download className="w-4 h-4" />
+              <span>Export PDF</span>
             </button>
+            <p className={`text-xs mt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Opens print dialog to save as PDF
+            </p>
           </div>
         </div>
         
@@ -808,13 +811,17 @@ export const ExportTab = ({ navigate, isDark }) => {
               <PieChart className="w-10 h-10 text-white" />
             </div>
             <h3 className="text-xl font-bold mb-3">Pitch Deck</h3>
-            <p className={`text-sm mb-6 ${isDark ? 'text-gray-400' : 'text-gray-600'} leading-relaxed`}>
-              Generate investor-ready presentation slides with compelling visuals and key metrics for fundraising
+            <p className={`text-sm mb-4 ${isDark ? 'text-gray-400' : 'text-gray-600'} leading-relaxed`}>
+              Interactive 7-slide presentation deck with landscape slide layouts, ready to present or export directly to PDF.
             </p>
+            <div className={`p-3 rounded-xl mb-6 text-xs text-left ${isDark ? 'bg-gray-700/40 text-gray-300' : 'bg-gray-50 text-gray-600'}`}>
+              <span className="font-semibold block mb-1">Presentation Mode:</span>
+              Interactive slide-by-slide view with dedicated 16:9 landscape PDF export.
+            </div>
             
             {/* Features */}
             <div className="space-y-2 mb-6">
-              {['10-12 Slide Deck', 'Investor-Ready Format', 'Visual Charts & Graphs', 'Problem-Solution Fit'].map((feature, index) => (
+              {['7-Slide Presentation Deck', '16:9 Landscape Print Layout', 'Problem, Solution & Market Fit', 'Monetization & Competition'].map((feature, index) => (
                 <div key={index} className="flex items-center space-x-2 text-sm">
                   <CheckCircle className="w-4 h-4 text-green-500" />
                   <span className={`${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{feature}</span>
@@ -823,22 +830,15 @@ export const ExportTab = ({ navigate, isDark }) => {
             </div>
             
             <button 
-              onClick={() => handleExport('pitch')}
-              disabled={isExporting}
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all duration-300 font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+              onClick={handleNavigatePitchDeck}
+              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all duration-300 font-semibold flex items-center justify-center space-x-2"
             >
-              {isExporting ? (
-                <>
-                  <RotateCcw className="w-4 h-4 animate-spin" />
-                  <span>Creating...</span>
-                </>
-              ) : (
-                <>
-                  <ArrowRight className="w-4 h-4" />
-                  <span>Create Pitch Deck</span>
-                </>
-              )}
+              <ArrowRight className="w-4 h-4" />
+              <span>Open Pitch Deck & Export</span>
             </button>
+            <p className={`text-xs mt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              Navigate to Pitch Preview for slide navigation & landscape PDF export
+            </p>
           </div>
         </div>
       </div>
@@ -846,47 +846,59 @@ export const ExportTab = ({ navigate, isDark }) => {
       {/* Additional Export Options */}
       <div className="grid md:grid-cols-3 gap-6">
         {/* Financial Excel */}
-        <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg hover:shadow-xl transition-all duration-300 text-center`}>
+        <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg transition-all duration-300 text-center opacity-75`}>
           <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl flex items-center justify-center mx-auto mb-4">
             <BarChart3 className="w-6 h-6 text-white" />
+          </div>
+          <div className="inline-block px-2 py-0.5 mb-2 rounded-full text-xs font-semibold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+            Coming Soon
           </div>
           <h4 className="font-semibold mb-2">Financial Model</h4>
           <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} mb-4`}>
             Excel spreadsheet with financial projections
           </p>
-          <button className="text-green-600 hover:text-green-700 font-medium text-sm flex items-center justify-center space-x-1 mx-auto">
+          <button disabled className="text-gray-400 font-medium text-sm flex items-center justify-center space-x-1 mx-auto cursor-not-allowed">
             <Download className="w-4 h-4" />
-            <span>Download</span>
+            <span>Unavailable</span>
           </button>
         </div>
 
         {/* Executive Summary */}
-        <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg hover:shadow-xl transition-all duration-300 text-center`}>
+        <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg transition-all duration-300 text-center`}>
           <div className="w-12 h-12 bg-gradient-to-r from-yellow-500 to-orange-600 rounded-xl flex items-center justify-center mx-auto mb-4">
             <FileText className="w-6 h-6 text-white" />
           </div>
+          <div className="inline-block px-2 py-0.5 mb-2 rounded-full text-xs font-semibold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+            Included in PDF
+          </div>
           <h4 className="font-semibold mb-2">Executive Summary</h4>
           <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} mb-4`}>
-            One-page business overview
+            Included in the comprehensive Business Plan PDF
           </p>
-          <button className="text-yellow-600 hover:text-yellow-700 font-medium text-sm flex items-center justify-center space-x-1 mx-auto">
+          <button 
+            onClick={handleExportBusinessPlan} 
+            className="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 font-medium text-sm flex items-center justify-center space-x-1 mx-auto"
+          >
             <Download className="w-4 h-4" />
-            <span>Download</span>
+            <span>Export in PDF</span>
           </button>
         </div>
 
         {/* Share Link */}
-        <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg hover:shadow-xl transition-all duration-300 text-center`}>
+        <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg transition-all duration-300 text-center opacity-75`}>
           <div className="w-12 h-12 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
             <ExternalLink className="w-6 h-6 text-white" />
           </div>
+          <div className="inline-block px-2 py-0.5 mb-2 rounded-full text-xs font-semibold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+            Coming Soon
+          </div>
           <h4 className="font-semibold mb-2">Share Link</h4>
           <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} mb-4`}>
-            Shareable online version
+            Public shareable online plan link
           </p>
-          <button className="text-cyan-600 hover:text-cyan-700 font-medium text-sm flex items-center justify-center space-x-1 mx-auto">
+          <button disabled className="text-gray-400 font-medium text-sm flex items-center justify-center space-x-1 mx-auto cursor-not-allowed">
             <Globe className="w-4 h-4" />
-            <span>Generate</span>
+            <span>Unavailable</span>
           </button>
         </div>
       </div>

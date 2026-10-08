@@ -28,6 +28,8 @@ import {
   PersonasTab,
   ExportTab
 } from '../components/DashboardTabs';
+import BusinessPlanPrintView from '../components/BusinessPlanPrintView';
+import { normalizePlanData, triggerPrintWithTitle } from '../utils/exportHelpers';
 
 const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
   const { isAuthenticated, claimCurrentPlan, openAuthModal, refreshUser } = useAuth();
@@ -284,6 +286,21 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
       loadFromLocalStorage();
     }
   }, [currentPath, loadPlanById, loadFromLocalStorage]);
+
+  // Handle auto-print if ?print=business-plan is requested
+  useEffect(() => {
+    if (!data || loading) return;
+    const searchString = window.location.search || (currentPath && currentPath.includes('?') ? '?' + currentPath.split('?')[1] : '');
+    const searchParams = new URLSearchParams(searchString);
+    if (searchParams.get('print') === 'business-plan') {
+      const timer = setTimeout(() => {
+        const normalized = normalizePlanData(data);
+        const safeName = (normalized.name || 'Startup').replace(/[^a-zA-Z0-9_-]/g, '_');
+        triggerPrintWithTitle(`${safeName}-Business-Plan`, 'portrait');
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [data, loading, currentPath]);
 
   const handleStartEditDetails = () => {
     if (!data?.overview) return;
@@ -550,8 +567,9 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
   const completedTabs = getTabByStatus();
 
   return (
-    <div className={`min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
-      <Header navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} showNavigation={true} />
+    <>
+      <div className={`screen-only min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+        <Header navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} showNavigation={true} />
 
       {/* Enhanced Hero Section */}
       <div className="relative py-12 overflow-hidden">
@@ -1117,7 +1135,9 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
           </div>
         </div>
       )}
-    </div>
+      </div>
+      <BusinessPlanPrintView data={data} />
+    </>
   );
 };
 

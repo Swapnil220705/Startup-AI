@@ -1,5 +1,5 @@
 // src/pages/PitchPreviewPage.jsx
-import React from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { 
   Download, 
   CheckCircle, 
@@ -8,6 +8,8 @@ import {
   TrendingUp 
 } from 'lucide-react';
 import Header from '../components/Header';
+import PitchDeckPrintView from '../components/PitchDeckPrintView';
+import { triggerPrintWithTitle } from '../utils/exportHelpers';
 
 const PitchPreviewPage = ({ navigate, isDark, toggleTheme }) => {
   // Load data from localStorage just like DashboardPage does
@@ -49,6 +51,17 @@ const PitchPreviewPage = ({ navigate, isDark, toggleTheme }) => {
       setLoading(false);
     }
   }, []);
+
+  const handleExportPdf = useCallback(() => {
+    const startupName = data?.overview?.name || 'Startup';
+    triggerPrintWithTitle(`${startupName}-Pitch-Deck`, 'landscape');
+  }, [data]);
+
+  useEffect(() => {
+    if (!loading && data && typeof window !== 'undefined' && window.location.search.includes('print=')) {
+      handleExportPdf();
+    }
+  }, [loading, data, handleExportPdf]);
 
   if (loading) {
     return (
@@ -254,40 +267,51 @@ const PitchPreviewPage = ({ navigate, isDark, toggleTheme }) => {
   ];
 
   return (
-    <div className={`min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
-      <Header navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} showNavigation={true} />
-      
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Pitch Deck Preview</h1>
-            <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-              Investor-ready presentation for {data.overview.name}
-            </p>
-          </div>
-          <button className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors flex items-center space-x-2">
-            <Download className="w-4 h-4" />
-            <span>Export PDF</span>
-          </button>
-        </div>
-
-        <div className="space-y-8">
-          {slides.map((slide, index) => (
-            <div key={index} className={`p-8 rounded-xl ${isDark ? 'bg-gray-800' : 'bg-white'} shadow-lg`}>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold">Slide {index + 1}: {slide.title}</h2>
-                <span className={`px-3 py-1 rounded-full text-sm ${isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
-                  {index + 1} of {slides.length}
-                </span>
-              </div>
-              <div className="min-h-64">
-                {slide.content}
-              </div>
+    <>
+      {/* Screen-Only Presentation View */}
+      <div className={`screen-only min-h-screen ${isDark ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+        <Header navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} showNavigation={true} />
+        
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">Pitch Deck Preview</h1>
+              <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                Investor-ready presentation for {data.overview.name}
+              </p>
             </div>
-          ))}
+            <button 
+              onClick={handleExportPdf}
+              title="Open browser print dialog to save as PDF"
+              aria-label="Export Pitch Deck as PDF"
+              className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors flex items-center space-x-2 font-medium shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export PDF</span>
+            </button>
+          </div>
+
+          <div className="space-y-8">
+            {slides.map((slide, index) => (
+              <div key={index} className={`p-8 rounded-xl ${isDark ? 'bg-gray-800' : 'bg-white'} shadow-lg`}>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-semibold">Slide {index + 1}: {slide.title}</h2>
+                  <span className={`px-3 py-1 rounded-full text-sm ${isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                    {index + 1} of {slides.length}
+                  </span>
+                </div>
+                <div className="min-h-64">
+                  {slide.content}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Print-Only 16:9 Landscape PDF View */}
+      <PitchDeckPrintView data={data} />
+    </>
   );
 };
 

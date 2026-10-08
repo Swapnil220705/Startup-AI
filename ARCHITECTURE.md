@@ -748,31 +748,52 @@ When `DashboardPage` detects an active persisted trial plan (`planPersistenceSta
 
 ---
 
-### 10.2 Recommended PDF Export Architecture
+### 10.2 Implemented PDF Export Architecture (Phase 5.2 - IMPLEMENTED)
 
-#### 1. Client-Side vs. Server-Side Evaluation
+#### 1. Architecture Choice & Evaluation
 
-| Architecture | Pros | Cons | Verdict for Startup-AI |
+| Architecture | Operational Footprint | Rendering Quality | Verdict for Startup-AI |
 |---|---|---|---|
-| **Server-Side Headless (Puppeteer / Playwright)** | Exact pixel-perfect Chromium rendering. | Adds 200MB+ Chromium binary, consumes 150–300MB RAM per render, crashes low-memory VPS/serverless, fragile Docker dependencies (`libnss3`, etc.). | **REJECTED** for current stack. Extreme operational overhead. |
-| **Server-Side Node PDFKit** | Lightweight (<10MB), fast, no browser dependency. | Requires manual programmatic coordinate drawing; difficult to match responsive Tailwind typography and cards. | **REJECTED** as primary export. High maintenance effort. |
-| **Client-Side DOM-to-Canvas (`html2canvas` + `jsPDF`)** | Simple client capture. | Produces rasterized, blurry bitmap PDFs with huge file sizes (5–20MB); text is non-selectable and non-searchable; fragile on mobile. | **REJECTED**. Unprofessional output. |
-| **Client-Side Print CSS (`@media print`) + Declarative Vector PDF** | 0 KB added server bloat, crisp selectable vector text, native browser print-to-PDF, zero deployment dependencies, works on all platforms. | Cannot silently auto-download without user print dialog on pure CSS approach; declarative requires formatted layout templates. | **RECOMMENDED**. Dual strategy provides highest reliability with zero server overhead. |
+| **Server-Side Headless (Puppeteer / Playwright)** | 200MB+ Chromium binary, 150–300MB RAM/render | Pixel-perfect Chromium | **REJECTED**: Massive operational cost and container bloat. |
+| **Server-Side Node PDFKit** | <10MB package, low memory | Coordinate-based primitive drawing | **REJECTED**: High maintenance, difficult responsive sync. |
+| **Client-Side Canvas (`html2canvas` + `jsPDF`)** | 200–500KB bundle | Blurry rasterized bitmap; non-selectable text | **REJECTED**: Substandard investor presentation quality. |
+| **Native Browser Print Engine + Print CSS (`@media print`)** | **0 KB added packages / 0 new dependencies** | **Crystal-clear vector text, native OS print-to-PDF, zero latency** | **IMPLEMENTED**: Cleanest, most maintainable, zero-dependency architecture. |
 
-#### 2. Selected PDF Architecture: Dual Vector & Print Engine
-- **Primary Mechanism**: Polished CSS Print Stylesheet (`@media print`) tailored for `/pitch-preview` (landscape slides) and `/dashboard` (portrait business plan).
-  - Strips navigation headers, background noise, and interactive buttons.
-  - Enforces explicit page breaks (`break-inside: avoid; page-break-after: always`).
-  - Vector-sharp text, preserved colors, and native browser PDF output.
-- **Direct Download Enhancer**: Lightweight client-side vector generator (e.g. `pdfmake` or standalone print iframe helper) providing 1-click "Download PDF" without server load.
-- **Export Scope**:
-  - **Pitch Deck PDF**: 7-slide landscape presentation deck matching `PitchPreviewPage`.
-  - **Full Business Plan PDF**: Formatted multi-page portrait document covering Executive Summary, Lean Canvas, MVP, Revenue, Personas, and Competitors.
-- **Storage Strategy**: **Stateless On-Demand Generation (Zero Binary Storage)**. PDFs are generated dynamically and delivered directly. No binary BLOBs stored in SQLite; zero server disk clutter.
-- **Export Authorization**: Strictly adheres to Phase 4.3 rules:
-  - Authenticated owner: allowed for owned plans.
-  - Anonymous trial visitor: allowed for their active trial plan matching `startup_ai_trial` cookie.
-  - Unauthorized third parties: safe HTTP 404 `PLAN_NOT_FOUND`.
+#### 2. Implemented Architecture Specifications:
+
+1. **Dual Export Modes**:
+   - **Pitch Deck PDF (16:9 Landscape)**:
+     - Rendered via `<PitchDeckPrintView data={data} />` on `/pitch-preview`.
+     - Exactly 7 presentation slides: Title Slide, Problem → Solution, Market Opportunity, Product Overview, Monetization, Competition & Positioning, and Strategic Milestones.
+     - Sized for widescreen 16:9 presentation paper (`@page { size: landscape; margin: 0; }`).
+     - Uses `break-after: page; page-break-inside: avoid;` to ensure each slide occupies exactly one printed page without accidental splitting.
+   - **Business Plan PDF (A4 Portrait)**:
+     - Rendered via `<BusinessPlanPrintView data={data} />` on `/dashboard` (Export Tab).
+     - Professional portrait multi-page executive document covering Executive Summary & Overview, Target Market & Personas, Lean Canvas Matrix, MVP Scope & Technical Specs, Monetization, Competitor Landscape, and Strategic Execution Roadmap.
+     - Sized for standard document print (`@page { size: portrait; margin: 12mm 10mm; }`).
+
+2. **Dedicated Print Presentation vs. Screen UI**:
+   - Screen markup is wrapped in `.screen-only` (`display: none !important` in `@media print`).
+   - Printable layouts are wrapped in `.print-only` (`display: none !important` on screen; `display: block !important` in `@media print`).
+   - Interactive buttons, header navigation, theme toggles, and edit controls are completely stripped from print output without relying on JavaScript listeners.
+
+3. **Dynamic Document Title & `@page` Orientation Injection**:
+   - Handled cleanly via `triggerPrintWithTitle(suggestedTitle, orientation)` in `frontend/src/utils/exportHelpers.js`.
+   - Injects a scoped `<style id="startup-ai-print-page-style">` configuring the exact `@page` orientation (landscape vs. portrait) immediately before calling `window.print()`, avoiding orientation clashes between routes.
+   - Temporarily updates `document.title` to sanitize the startup name (e.g., `NovaScale_AI-Pitch-Deck.pdf` or `NovaScale_AI-Business-Plan.pdf`), which modern browsers suggest as the default PDF download filename.
+   - Restores the original document title and removes temporary style elements on the `afterprint` event or fallback timeout.
+
+4. **Dark Mode Print Safety**:
+   - In `frontend/src/print.css`, `@media print` strictly overrides dark mode classes (`.dark, .dark body, .dark #root` forced to `#ffffff` background and `#111827` text).
+   - Enforces `-webkit-print-color-adjust: exact; print-color-adjust: exact;` ensuring cards, badges, and accents render with exact colors without wasting printer toner or washing out contrast.
+
+5. **Defensive Partial Generation Handling**:
+   - Pure mapping functions (`normalizePlanData`, `buildPitchDeckSlides`, `buildBusinessPlanDocument`) tolerate missing modules gracefully.
+   - When 1–5 modules fail during AI generation or are unpopulated in storage, safe human-friendly placeholders (e.g., *"Not specified"*, *"No elevator pitch available"*) are rendered without throwing errors or exposing internal error metadata.
+
+6. **Zero Server Clutter & Authorization Invariant**:
+   - Stateless client-side generation; 0 binary files saved to disk or SQLite.
+   - Because generation operates on the active loaded plan in state, authenticated users export their own plans, anonymous trial users export their single active trial plan, and unauthorized users are protected by Phase 4.3 route boundaries.
 
 ---
 
@@ -844,9 +865,9 @@ CREATE INDEX IF NOT EXISTS idx_plan_shares_user_id ON plan_shares(user_id);
 
 1. **Chunk 5.1 — Export & Sharing Architecture Audit** (COMPLETED)
    - Comprehensive audit of data structures, UI components, dependencies, security models, and deployment constraints.
-2. **Chunk 5.2 — Pitch Deck & Business Plan PDF Export Engine**
-   - Implement print stylesheet rules (`@media print`) and client-side vector PDF generation on `PitchPreviewPage` and `DashboardTabs`.
-   - Wire "Download PDF" and "Pitch Deck" export actions with proper loading and progress indicators.
+2. **Chunk 5.2 — Pitch Deck & Business Plan PDF Export Engine** (COMPLETED)
+   - Implemented print stylesheet rules (`@media print`, `print.css`) and native browser print-to-PDF engine for both Pitch Deck (16:9 landscape, 7 slides) and Business Plan (A4 portrait multi-page document).
+   - Wired "Export PDF" on `PitchPreviewPage` and `DashboardTabs` with dynamic `@page` injection, safe title filename suggestion, and defensive data normalization.
 3. **Chunk 5.3 — Plan Sharing Database Foundation & Backend API**
    - Migration 003 (`plan_shares` table).
    - Endpoints: `POST /api/plans/:id/share`, `DELETE /api/plans/:id/share`, `GET /api/shared/:token`.

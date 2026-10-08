@@ -253,27 +253,31 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - **Privacy & Security**: Enforces `X-Robots-Tag: noindex, nofollow` on public shares to prevent search engine indexing of private startup ideas. Truncates tokens in logs.
   - **Product Decision on Anonymous Sharing**: **Require account authentication before sharing**. Eliminates unrevocable orphan public shares and creates a natural, high-intent product conversion loop without adding friction to initial anonymous generation.
   - **Sanitization Contract**: The public response strictly redacts owner credentials, emails, session IDs, internal DB UUIDs, generation errors, and mutation controls.
-- [x] **Phased Implementation Roadmap Formulated**:
-  - Chunk 5.1: Export & Sharing Architecture Audit (COMPLETED)
-  - Chunk 5.2: Pitch Deck & Business Plan PDF Export Engine (Print Stylesheet + Vector PDF Export)
-  - Chunk 5.3: Plan Sharing Database Foundation & Backend API (Migration 003, token generation/revocation, public endpoint)
-  - Chunk 5.4: Public Shareable Presentation Page & Viral Growth UX (`/share/:token`, slide deck viewer, CTA)
-  - Chunk 5.5: Dashboard & Pitch Preview Share Management UX (ExportTab wiring, share link copy modal, revocation management)
-- [x] **Explicit Scope Boundaries Maintained**:
-  - Chunk 5.2 was NOT started.
-  - No PDF generation code was implemented.
-  - No sharing backend was implemented.
-  - No public share page was implemented.
-  - No new dependencies were added.
+- [x] **Chunk 5.2: Pitch Deck & Business Plan PDF Export Engine (COMPLETED)**:
+  - **Zero-Dependency Native Browser Print Engine**: Utilizes modern browser native print-to-PDF engine (`window.print()`) combined with comprehensive print stylesheet (`frontend/src/print.css`), adding 0 KB server bloat and 0 external PDF libraries.
+  - **Pitch Deck PDF (16:9 Landscape)**: Implemented in `<PitchDeckPrintView data={data} />` mounted on `PitchPreviewPage`. Exactly 7 presentation slides (Title, Problem → Solution, Market Opportunity, Product Overview, Monetization, Competition, Next Steps) with `@page { size: landscape; margin: 0; }` and `break-after: page; page-break-inside: avoid;` ensuring each slide fits cleanly on exactly one printed page without accidental splitting.
+  - **Business Plan PDF (A4 Portrait)**: Implemented in `<BusinessPlanPrintView data={data} />` mounted on `DashboardPage`. Multi-page portrait executive document covering Executive Summary & Overview, Target Market & Personas, Lean Canvas Matrix, MVP Architecture & Specs, Monetization & Pricing Model, Competitor Landscape, Strategic Execution Roadmap, and footer page numbering with `@page { size: portrait; margin: 12mm 10mm; }`.
+  - **Pure Data Transformation Architecture**: Created `frontend/src/utils/exportHelpers.js` providing `normalizePlanData`, `buildPitchDeckSlides`, and `buildBusinessPlanDocument` ensuring zero duplicate data logic across screen and print views while defending against missing modules and partial generation data.
+  - **Dynamic `@page` Orientation Injection & Title Sanitization**: `triggerPrintWithTitle(suggestedTitle, orientation)` dynamically injects `<style id="startup-ai-print-page-style">` to prevent landscape/portrait orientation clashes across routes, temporarily updates `document.title` to suggest clean PDF filenames (e.g., `Startup-Pitch-Deck.pdf` / `Startup-Business-Plan.pdf`), and cleans up styles on `afterprint`.
+  - **Dark Mode Print Safety**: `@media print` explicitly forces light backgrounds (`#ffffff`) and high-contrast dark text (`#111827`) with `-webkit-print-color-adjust: exact; print-color-adjust: exact;` without permanently mutating `ThemeContext` state.
+  - **ExportTab Honesty**: Updated `frontend/src/components/DashboardTabs.js` to wire Business Plan PDF export and Pitch Deck navigation while marking unsupported cards (Financial Model, Share Link) with disabled "Coming Soon" badges.
+  - **Explicit Scope Boundaries Maintained**:
+    - Phase 5.3 was NOT started.
+    - No sharing backend was implemented.
+    - No plan_shares table or migrations were created.
+    - No public share page was implemented.
+    - No PDF generation library was added (no Puppeteer, Playwright, jsPDF, html2canvas, pdfmake, PDFKit, or @react-pdf/renderer).
+    - No authentication features or AI prompts/models were altered.
 
 ---
 
 ## 8. Next Planned Phase & Chunk
 
 **Phase 5: Pitch Deck Export & Sharing**
-- **Chunk 5.2 — Pitch Deck & Business Plan PDF Export Engine**:
-  - Implement print stylesheet rules (`@media print`) and client-side vector PDF generation on `PitchPreviewPage` and `DashboardTabs`.
-  - Wire "Download PDF" and "Pitch Deck" export actions with proper loading and progress indicators.
+- **Chunk 5.3 — Plan Sharing Database Foundation & Backend API**:
+  - Database Migration 003: create `plan_shares` table (`id`, `plan_id`, `user_id`, `share_token`, `is_active`, `view_count`, `created_at`, `revoked_at`).
+  - Endpoints: `POST /api/plans/:id/share` (generate share token), `DELETE /api/plans/:id/share` (revoke share token), `GET /api/shared/:token` (sanitized read-only plan fetch).
+  - Rate limiting, token validation, and secret sanitization.
 
 ---
 
@@ -296,14 +300,14 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 3.3: Plan History / My Plans (Completed - `04eed8f`)
   - Chunk 3.4: Plan Detail / Loading / Re-opening (Completed - `5c6d58f`)
   - Chunk 3.5: Update/Delete/Archive & Persistence Edge Cases (Completed - `c73a00a`)
-- **Phase 4: Authentication & Multi-User Plan Architecture (COMPLETED)**
+- **Phase 4: Authentication & Multi-User Plan Architecture (COMPLETED - Commit `9439267`)**
   - Chunk 4.1: Authentication & Anonymous Trial Architecture Audit (Completed - `632609e`)
   - Chunk 4.2: Database Migration 002, User Model & Core Backend Auth Endpoints (Completed)
   - Chunk 4.3: Plan Ownership, Multi-User Isolation & Plan Claiming API (Completed)
-  - Chunk 4.4: Frontend Auth UX, Google Sign-In & Dashboard Claim Flow (Completed)
+  - Chunk 4.4: Frontend Auth UX, Google Sign-In & Dashboard Claim Flow (Completed - `9439267`)
 - **Phase 5: Pitch Deck Export & Sharing (IN PROGRESS)**
-  - Chunk 5.1: Export & Sharing Architecture Audit (Completed)
-  - Chunk 5.2: Pitch Deck & Business Plan PDF Export Engine
+  - Chunk 5.1: Export & Sharing Architecture Audit (Completed - `6f07fa3`)
+  - Chunk 5.2: Pitch Deck & Business Plan PDF Export Engine (COMPLETED)
   - Chunk 5.3: Plan Sharing Database Foundation & Backend API
   - Chunk 5.4: Public Shareable Presentation Page & Viral Growth UX
   - Chunk 5.5: Dashboard & Pitch Preview Share Management UX
@@ -314,12 +318,12 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `9439267` (feat: implement frontend authentication and trial claim UX)
+- **Pre-Chunk Commit**: `6f07fa3` (docs: audit phase 5 export and sharing architecture)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
 - **Phase 4 Status**: COMPLETED
-- **Phase 5 Status**: IN PROGRESS (Chunk 5.1 Completed)
+- **Phase 5 Status**: IN PROGRESS (Chunk 5.1 & Chunk 5.2 Completed)
 
 ---
 
@@ -327,11 +331,12 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 | Verification Check | Result | Details |
 |---|---|---|
-| **Backend Syntax** | PASS | All backend JS files checked with `node -c index.js controllers/*.js models/*.js routes/*.js services/*.js utils/*.js db/*.js middleware/*.js tests/*.js`. |
+| **Backend Syntax** | PASS | Checked with `node -c index.js controllers/*.js models/*.js routes/*.js services/*.js utils/*.js db/*.js middleware/*.js tests/*.js` with 0 errors. |
+| **Backend Test Suite (15 suites)** | PASS | `npm test` runs all 15 test suites cleanly with 0 errors across 160+ assertions. |
+| **Frontend Test Suite (9 suites, 46 tests)** | PASS | `CI=true npm test -- --watchAll=false` runs all 9 suites cleanly (46/46 tests pass), including new `exportHelpers.test.js` (data normalization, 7 slides, business plan doc, print trigger) and `ExportViews.test.js` (PitchDeckPrintView, BusinessPlanPrintView, ExportTab). |
+| **Frontend Production Build** | PASS | `npm run build` compiles with 0 errors (`main.e2bd4b6b.js`). Zero ESLint warnings in newly created export code. |
+| **Manual Browser Verification (Flows A–E)** | PASS | Automated & browser subagent verified on Chromium: Flow A (Pitch Deck 7 slides, print-only DOM container, landscape print trigger), Flow B (Business Plan portrait multi-page document, all sections, print trigger), Flow C (Dark Mode active on screen, print output light-safe), Flow D (Partial plan handling without crashing), and Flow E (Mobile 375x667 viewport responsiveness). |
 | **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000 with `Database: Connected & Migrated ✅`. |
-| **Backend Test Suite (15 suites)** | PASS | `npm test` runs all 15 test files cleanly with 0 errors across 160+ assertions. |
-| **Frontend Test Suite (7 suites, 31 tests)** | PASS | `CI=true npm test -- --watchAll=false` runs all 7 test suites cleanly (31 tests pass). |
-| **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.0f9fa8a5.js`). Pre-existing ESLint warnings documented. |
 | **Plan Authorization & Trial Suite** | PASS | `backend/tests/planAuthorization.test.js`: 12 comprehensive categories (A–L) verifying authenticated ownership, anonymous trial cookies, 403 limit enforcement, trial & user isolation, history isolation, PATCH/DELETE authorization, atomic plan claiming, claim race safety (409), Phase 3 backward compatibility, and error sanitization. |
 | **Auth Endpoints Test Suite** | PASS | `backend/tests/authEndpoints.test.js`: 36 comprehensive tests (A–AJ) covering migrations, scrypt hashing, timing-safe verification, session random tokens, 30-day expiry, signup, login, Google token verification, local account collision protection, /me, logout cookie clearing, and secret stripping. |
 | **Plan Lifecycle Test Suite** | PASS | `backend/tests/planLifecycle.test.js`: 17 comprehensive tests (A–Q) covering metadata updates, field preservation, empty name validation, timestamp management, module preservation, 404 handling, single plan deletion isolation, active session purging, non-active session protection, active session metadata synchronization, partial plan lifecycle, and HTTP controller contracts. |

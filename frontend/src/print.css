@@ -1,0 +1,229 @@
+/**
+ * frontend/src/print.css
+ * 
+ * Specialized Print Stylesheet for Startup-AI:
+ * - Pitch Deck PDF Export (16:9 Landscape Presentation Slides)
+ * - Business Plan PDF Export (Portrait Executive Business Plan Document)
+ * 
+ * Enforces light-mode print safety regardless of screen dark mode,
+ * eliminates screen controls, and guarantees precise page breaking.
+ */
+
+/* ============================================================
+   1. SCREEN VIEW RULES
+   ============================================================ */
+.print-only {
+  display: none !important;
+}
+
+@media screen {
+  .print-only {
+    display: none !important;
+  }
+}
+
+/* ============================================================
+   2. GLOBAL PRINT MEDIA RULES
+   ============================================================ */
+@media print {
+  /* Hide all interactive and screen navigation elements */
+  .screen-only,
+  header,
+  nav,
+  button,
+  .no-print,
+  [role="dialog"],
+  .fixed,
+  .sticky {
+    display: none !important;
+  }
+
+  /* Make print-only containers block and visible */
+  .print-only {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  /* Force print-safe light background and dark text */
+  html,
+  body {
+    background-color: #ffffff !important;
+    background-image: none !important;
+    color: #111827 !important; /* Tailwind gray-900 */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Dark mode overrides: strictly strip dark backgrounds in print */
+  .dark,
+  .dark body,
+  .dark #root,
+  .dark [class*="bg-gray-900"],
+  .dark [class*="bg-gray-800"] {
+    background-color: #ffffff !important;
+    background-image: none !important;
+    color: #111827 !important;
+  }
+
+  /* Ensure text colors are dark and legible on white paper */
+  .dark p,
+  .dark span,
+  .dark h1,
+  .dark h2,
+  .dark h3,
+  .dark h4,
+  .dark h5,
+  .dark h6,
+  .dark div {
+    color: #111827 !important;
+  }
+
+  .dark [class*="text-gray-300"],
+  .dark [class*="text-gray-400"] {
+    color: #4b5563 !important;
+  }
+
+  .dark [class*="text-indigo-"],
+  .dark [class*="text-green-"],
+  .dark [class*="text-red-"] {
+    color: inherit !important;
+  }
+
+  /* ============================================================
+     3. PITCH DECK (LANDSCAPE SLIDES)
+     ============================================================ */
+  .print-pitch-deck-container {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .print-pitch-slide {
+    box-sizing: border-box !important;
+    width: 100vw !important;
+    min-height: 96vh !important;
+    padding: 2.5rem 3.5rem !important;
+    margin: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 0.5rem !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* The final slide does not cause an extra blank trailing page */
+  .print-pitch-slide:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  .print-slide-header {
+    border-bottom: 2px solid #4f46e5 !important;
+    padding-bottom: 0.75rem !important;
+    margin-bottom: 1.5rem !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+  }
+
+  .print-slide-content {
+    flex-grow: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+  }
+
+  .print-slide-footer {
+    border-top: 1px solid #e5e7eb !important;
+    padding-top: 0.75rem !important;
+    margin-top: 1.5rem !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    font-size: 0.875rem !important;
+    color: #6b7280 !important;
+  }
+
+  .print-card {
+    background-color: #f9fafb !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 0.75rem !important;
+    padding: 1.25rem !important;
+    box-shadow: none !important;
+  }
+
+  /* ============================================================
+     4. BUSINESS PLAN (PORTRAIT DOCUMENT)
+     ============================================================ */
+  .print-business-plan-container {
+    width: 100% !important;
+    max-width: 850px !important;
+    margin: 0 auto !important;
+    padding: 1rem !important;
+    background-color: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  .print-bp-cover {
+    min-height: 88vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    text-align: center !important;
+    padding: 3rem 1rem !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-bp-section {
+    margin-bottom: 2rem !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-bp-section-header {
+    border-bottom: 2px solid #4f46e5 !important;
+    padding-bottom: 0.5rem !important;
+    margin-bottom: 1rem !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+  }
+
+  .print-bp-grid {
+    display: grid !important;
+    gap: 1rem !important;
+  }
+
+  .print-bp-card {
+    background-color: #f9fafb !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 0.5rem !important;
+    padding: 1rem !important;
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-bp-footer {
+    border-top: 1px solid #e5e7eb !important;
+    padding-top: 1rem !important;
+    margin-top: 2rem !important;
+    text-align: center !important;
+    font-size: 0.75rem !important;
+    color: #9ca3af !important;
+  }
+}
