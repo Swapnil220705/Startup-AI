@@ -112,13 +112,18 @@ Startup-AI/
         ├── index.js             # React DOM entry point
         ├── index.css            # Tailwind directives
         ├── components/
-        │   ├── Header.js        # Global navigation header (Dashboard, My Plans, Pitch Deck)
-        │   └── DashboardTabs.js # Tab views with defensive fallback cards
+        │   ├── Header.js        # Global navigation header with auth state & user menu
+        │   ├── DashboardTabs.js # Tab views with defensive fallback cards
+        │   └── AuthModal.js     # Google GIS & Email Sign In / Sign Up modal
+        ├── context/
+        │   └── AuthContext.js   # Centralized auth state & session provider
+        ├── services/
+        │   └── api.js           # Centralized Axios client (withCredentials) & error formatting
         ├── pages/
         │   ├── LandingPage.js   # Hero landing page
-        │   ├── IdeaInputPage.js # Startup intake form triggering parallel generation
-        │   ├── DashboardPage.js # Main output dashboard with partial generation alert
-        │   ├── HistoryPage.js   # Real API-backed saved plan history & pagination page
+        │   ├── IdeaInputPage.js # Startup intake form triggering parallel generation & 403 handling
+        │   ├── DashboardPage.js # Main output dashboard with anonymous trial banner & claim flow
+        │   ├── HistoryPage.js   # Real API-backed saved plan history & anonymous sign-in state
         │   └── PitchPreviewPage.js # Pitch deck preview slide deck
         └── utils/
             ├── Router.js        # Custom lightweight pushState/popState router
@@ -653,47 +658,60 @@ Step 8: Dashboard updates status to "Saved to Account".
 
 ### 9.9 Frontend Authentication UX & State Architecture
 
-#### 1. `AuthContext` (`src/utils/AuthContext.js`)
+#### 1. `AuthContext` (`src/context/AuthContext.js`)
 Centralizes authentication state and wraps the entire application:
 ```javascript
 const AuthContext = createContext({
-  user: null,             // { id, email, name, pictureUrl } or null
+  user: null,             // { id, email, name, pictureUrl, authProvider } or null
   isAuthenticated: false,
   isLoading: true,        // True during initial session bootstrap
+  authError: null,
   loginWithGoogle: async (credential) => {},
   loginWithEmail: async (email, password) => {},
-  signupWithEmail: async (email, password, name) => {},
+  signupWithEmail: async (name, email, password) => {},
   logout: async () => {},
-  claimCurrentPlan: async (planId) => {}
+  refreshUser: async () => {},
+  claimCurrentPlan: async (planId) => {},
+  openAuthModal: (context = {}) => {},
+  closeAuthModal: () => {},
+  isAuthModalOpen: false,
+  authModalContext: {}
 });
 ```
 
 #### 2. Session Hydration on Mount
-When the React application boots, `AuthContext` dispatches `GET /api/auth/me` with credentials:
-- If cookie valid: sets `user` and `isAuthenticated = true`.
-- If 401: sets `user = null` and `isAuthenticated = false`.
+When the React application boots, `AuthContext` dispatches `GET /api/auth/me` with `withCredentials: true` via `api.js`:
+- If session cookie valid: sets `user` and `isAuthenticated = true`.
+- If 401 unauthenticated: sets `user = null` and `isAuthenticated = false` cleanly without interrupting anonymous user experience.
 - Sets `isLoading = false` (no blocking white screen; pages render immediately).
+- Temporary network issues do NOT erase local anonymous startup plan data.
 
-#### 3. Navigation Header (`Header.js`) Integration
+#### 3. Centralized API Client (`src/services/api.js`)
+- Pre-configured Axios instance with `withCredentials: true` and `baseURL: 'http://localhost:4000'`.
+- Includes `formatAuthError` mapping backend error codes (`INVALID_CREDENTIALS`, `EMAIL_ALREADY_IN_USE`, `ACCOUNT_COLLISION`, `PLAN_ALREADY_CLAIMED`, `TRIAL_LIMIT_REACHED`, `PLAN_NOT_FOUND`) to safe, friendly messages without exposing internal SQL or stack traces.
+
+#### 4. Navigation Header (`Header.js`) Integration
 - **Unauthenticated**: Renders clean "Sign In" button and "Get Started" CTA.
-- **Authenticated**: Renders user avatar (Google profile image or initials), user display name, and an accessible dropdown menu with:
-  - "My Plans" (with count badge)
-  - "New Plan"
-  - Theme toggle
+- **Authenticated**: Renders user display name, avatar picture or initials circle, and an accessible dropdown menu with:
+  - "My Saved Plans"
+  - "Current Dashboard"
   - "Sign Out" action
+- Mobile responsive navigation reflecting authentication state.
 
-#### 4. `AuthModal` Component
-- Modal accessible from Header "Sign In", Dashboard "Save Plan" banner, or trial limit trigger.
-- **Top Section**: High-visibility "Continue with Google" button with official Google branding.
+#### 5. `AuthModal` Component (`src/components/AuthModal.js`)
+- Modal accessible from Header "Sign In", Dashboard "Save My Plan" banner, IdeaInput trial limit trigger, or My Plans sign-in state.
+- **Top Section**: High-visibility "Continue with Google" button utilizing Google Identity Services (GIS), client ID verification, script idempotency, and backend `POST /api/auth/google` verification handshake.
 - **Divider**: Subtle "or continue with email" separator.
-- **Bottom Section**: Tabbed Email Login / Signup form with real-time field validation, accessible error alerts, and clean loading spinners.
+- **Bottom Section**: Tabbed Email Login / Signup form with client-side validation (minimum 8 character password), loading indicators, and error feedback.
 
-#### 5. Dashboard Trial Banner
-When `DashboardPage` detects an active plan where `persistenceStatus === 'saved'` but `user === null`:
-- Displays a dismissible top banner:
-  > **✨ Free Trial Plan** — Your complete AI startup plan is ready! Sign in to save it permanently to your account.
+#### 6. Dashboard Trial Banner & Atomic Plan Claiming
+When `DashboardPage` detects an active persisted trial plan (`planPersistenceStatus === 'saved'` or valid `currentPlanId`) but `user === null`:
+- Displays top banner:
+  > **✨ Free Trial Plan** — Your complete AI startup plan is ready. Sign in to save it permanently and access it from My Plans.
   > `[ Save My Plan ]`
-- Clicking "Save My Plan" opens `AuthModal`; upon successful login, the claim hook automatically executes and transitions the banner to:
-  > **✅ Plan Saved to Account** — You can now access this plan anytime from My Plans.
+- Clicking "Save My Plan" opens `AuthModal`; upon successful login or signup, immediately dispatches `POST /api/plans/claim` with `{ planId: currentPlanId }`.
+- Backend atomically associates ownership (`user_id = req.user.id`).
+- Local plan data, `currentPlanId`, and all 6 AI modules are preserved without regeneration or duplicate plan creation.
+- Once claimed, transitions banner to "Saved to Your Account" and enables My Plans access.
 
 ---

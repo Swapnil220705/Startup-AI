@@ -1,12 +1,14 @@
 // src/App.js
 import React, { useState, useEffect } from 'react';
 import { ThemeProvider } from './utils/ThemeContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { Router } from './utils/Router';
 import LandingPage from './pages/LandingPage';
 import IdeaInputPage from './pages/IdeaInputPage';
 import DashboardPage from './pages/DashboardPage';
 import PitchPreviewPage from './pages/PitchPreviewPage';
 import HistoryPage from './pages/HistoryPage';
+import AuthModal from './components/AuthModal';
 import { mockDashboardData } from './utils/mockData';
 
 const App = () => {
@@ -32,19 +34,36 @@ const App = () => {
 
   return (
     <ThemeProvider value={{ isDark, toggleTheme }}>
-      <div className={`min-h-screen transition-colors ${isDark ? 'dark bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
-        <Router>
-          <AppContent 
-            isDark={isDark} 
-            toggleTheme={toggleTheme}
-            formData={formData}
-            setFormData={setFormData}
-            isLoading={isLoading}
-            setIsLoading={setIsLoading}
-          />
-        </Router>
-      </div>
+      <AuthProvider>
+        <div className={`min-h-screen transition-colors ${isDark ? 'dark bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+          <Router>
+            <AppContent 
+              isDark={isDark} 
+              toggleTheme={toggleTheme}
+              formData={formData}
+              setFormData={setFormData}
+              isLoading={isLoading}
+              setIsLoading={setIsLoading}
+            />
+          </Router>
+          <GlobalAuthModal isDark={isDark} />
+        </div>
+      </AuthProvider>
     </ThemeProvider>
+  );
+};
+
+const GlobalAuthModal = ({ isDark }) => {
+  const { authModalConfig, closeAuthModal } = useAuth();
+  return (
+    <AuthModal
+      isOpen={authModalConfig.isOpen}
+      onClose={closeAuthModal}
+      title={authModalConfig.title}
+      subtitle={authModalConfig.subtitle}
+      onSuccess={authModalConfig.onAuthSuccess}
+      isDark={isDark}
+    />
   );
 };
 

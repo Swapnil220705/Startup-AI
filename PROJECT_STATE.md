@@ -68,10 +68,10 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 4 — Authentication & Multi-User Plan Architecture
-- **Current Chunk**: Chunk 4.3 — Plan Ownership, Anonymous Trial & Claiming
+- **Current Chunk**: Chunk 4.4 — Frontend Authentication UX & Trial Claim Flow
 - **Status**: Completed
-- **Phase 4 Status**: IN PROGRESS (Chunks 4.1, 4.2 & 4.3 complete, Chunk 4.4 next)
-- **Next Planned Chunk**: Chunk 4.4 — Frontend Authentication UX & Trial Claim Flow
+- **Phase 4 Status**: COMPLETE (Chunks 4.1, 4.2, 4.3 & 4.4 complete)
+- **Next Planned Phase**: Phase 5 — Pitch Deck Export & Sharing
 
 ---
 
@@ -175,15 +175,65 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ---
 
+## 7.9 Completed in Current Chunk (Chunk 4.4) — Frontend Authentication UX & Trial Claim Flow
+
+- [x] **Centralized HTTP & API Client (`frontend/src/services/api.js`)**:
+  - Configured shared Axios instance with `baseURL: 'http://localhost:4000'` and `withCredentials: true`.
+  - Implemented `formatAuthError` mapping backend error codes (`401 UNAUTHORIZED`, `401 INVALID_CREDENTIALS`, `409 EMAIL_ALREADY_IN_USE`, `409 ACCOUNT_COLLISION`, `409 PLAN_ALREADY_CLAIMED`, `403 TRIAL_LIMIT_REACHED`, `404 PLAN_NOT_FOUND`, and network timeouts) to friendly, actionable user messages without exposing internal SQL, stack traces, or session secrets.
+- [x] **Authentication Context & Provider (`frontend/src/context/AuthContext.js`)**:
+  - Manages `user`, `isAuthenticated`, `isLoading`, `authError`, `isAuthModalOpen`, and `authModalContext`.
+  - Performs non-blocking session restoration on startup (`GET /api/auth/me` with credentials).
+  - Handles 401 unauthenticated responses cleanly without crashing or blocking the app.
+  - Exposes actions: `loginWithEmail`, `signupWithEmail`, `loginWithGoogle`, `logout`, `refreshUser`, `claimCurrentPlan`, `openAuthModal`, `closeAuthModal`.
+  - Strictly enforces security: zero session tokens, zero Google tokens, and zero passwords in `localStorage`.
+- [x] **Google & Email Authentication Modal (`frontend/src/components/AuthModal.js`)**:
+  - Contextual modal supporting custom trigger messages (e.g. saving plans, trial limit reached, browsing history).
+  - **Primary Action**: "Continue with Google" button with Google Identity Services (GIS) library integration, client ID verification, script idempotency, loading states, and backend verification handshake via `POST /api/auth/google`.
+  - **Secondary Action**: Accessible tabbed Email Sign In / Sign Up form with field validation (minimum 8 character password), loading states, and error alerts.
+  - Keyboard accessible (Escape key closes) and backdrop click handling.
+- [x] **Authentication-Aware Header (`frontend/src/components/Header.js`)**:
+  - Anonymous users see navigation, "Sign In" button, and "Get Started" CTA.
+  - Authenticated users see user display name, avatar picture or initials circle, and an accessible dropdown menu with:
+    - "My Saved Plans"
+    - "Current Dashboard"
+    - "Sign Out" action
+  - Clean responsive mobile navigation reflecting authentication status.
+- [x] **Anonymous Trial Banner & Claim Flow (`frontend/src/pages/DashboardPage.js`)**:
+  - Displays high-visibility, non-intrusive trial banner ("✨ Free Trial Plan • Your complete AI startup plan is ready. Sign in to save it permanently and access it from My Plans").
+  - "Save My Plan" CTA triggers `AuthModal`; upon successful authentication, immediately dispatches `POST /api/plans/claim` with `planId: currentPlanId`.
+  - Preserves existing `currentPlanId`, all 6 generated AI modules, and active dashboard state without regeneration or duplicate plan creation.
+  - Handles claim failures gracefully with retryable error banner while preserving local state.
+  - Once claimed, transitions banner to "Saved to Your Account" and enables My Plans access.
+- [x] **My Plans / History Page Auth State (`frontend/src/pages/HistoryPage.js`)**:
+  - Anonymous users see a polished sign-in state explaining benefits with "Sign In / Create Account" CTA instead of a raw API error.
+  - Authenticated users fetch, view, paginate, open, edit, and delete plans via `GET /api/plans` with full session credentials.
+- [x] **Structured Trial-Limit Handling (`frontend/src/pages/IdeaInputPage.js`)**:
+  - Intercepts HTTP 403 `TRIAL_LIMIT_REACHED` on generation persistence.
+  - Opens `AuthModal` with dedicated messaging ("Your free trial plan is already saved. Sign in to create more startup plans.") and allows auto-retry once authenticated.
+- [x] **App-Level Integration (`frontend/src/App.js`)**:
+  - Wrapped router and view tree with `<AuthProvider>`.
+  - Mounted `<GlobalAuthModal>` dynamically responding to context-triggered modal openings.
+- [x] **Comprehensive Frontend Test Suite (7 suites, 31 tests)**:
+  - `src/services/api.test.js`: verifies API client configuration and error formatting.
+  - `src/context/AuthContext.test.js`: verifies session bootstrap, email login, Google login, logout, and claim handling.
+  - `src/components/AuthModal.test.js`: verifies modal modes, validation, form submission, and escape handling.
+  - `src/components/Header.test.js`: verifies anonymous and authenticated header states and dropdown actions.
+  - `src/pages/DashboardAuth.test.js`: verifies trial banner rendering, Save My Plan trigger, and saved state.
+  - `src/pages/HistoryPageAuth.test.js`: verifies anonymous sign-in prompt and authenticated plan list rendering.
+  - `src/App.test.js`: verifies top-level rendering within AuthProvider.
+- [x] **Explicit Scope Boundaries Maintained**:
+  - Phase 4 is marked COMPLETE. Chunk 4.4 was the final Phase 4 chunk.
+  - No Phase 5 work was started.
+  - No changes made to AI prompts or models in `MODELS.md`.
+
+---
+
 ## 8. Next Planned Phase & Chunk
 
-**Phase 4: Authentication & Multi-User Plan Architecture**
-- **Chunk 4.4 — Frontend Authentication UX & Trial Claim Flow**:
-  - Implement `AuthContext` (`src/utils/AuthContext.js`) wrapping React tree with session hydration (`GET /api/auth/me`).
-  - Implement `AuthModal` component supporting Google Sign-In button and Email/Password login/signup tabs.
-  - Integrate Header profile avatar / dropdown menu (My Plans, Sign Out).
-  - Implement Dashboard trial banner ("✨ Free Trial Plan • Sign in to save permanently") and auto-claim hook.
-  - Connect trial claim flow end-to-end between frontend and backend.
+**Phase 5: Pitch Deck Export & Sharing**
+- **Chunk 5.1 — Pitch Deck PDF & Slide Export Engine**:
+  - Structured PDF generation of pitch deck and executive summary.
+  - Shareable link export and presentation mode hardening.
 
 ---
 
@@ -206,11 +256,11 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 3.3: Plan History / My Plans (Completed - `04eed8f`)
   - Chunk 3.4: Plan Detail / Loading / Re-opening (Completed - `5c6d58f`)
   - Chunk 3.5: Update/Delete/Archive & Persistence Edge Cases (Completed - `c73a00a`)
-- **Phase 4: Authentication & Multi-User Plan Architecture (IN PROGRESS)**
+- **Phase 4: Authentication & Multi-User Plan Architecture (COMPLETED)**
   - Chunk 4.1: Authentication & Anonymous Trial Architecture Audit (Completed - `632609e`)
   - Chunk 4.2: Database Migration 002, User Model & Core Backend Auth Endpoints (Completed)
-  - Chunk 4.3: Plan Ownership, Multi-User Isolation & Plan Claiming API
-  - Chunk 4.4: Frontend Auth UX, Google Sign-In & Dashboard Claim Flow
+  - Chunk 4.3: Plan Ownership, Multi-User Isolation & Plan Claiming API (Completed)
+  - Chunk 4.4: Frontend Auth UX, Google Sign-In & Dashboard Claim Flow (Completed)
 - **Phase 5: Pitch Deck Export & Sharing** (PDF / PowerPoint exports)
 - **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
 
@@ -223,7 +273,7 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
-- **Phase 4 Status**: IN PROGRESS (Chunks 4.1, 4.2 and 4.3 Completed)
+- **Phase 4 Status**: COMPLETED (Chunks 4.1, 4.2, 4.3, 4.4 Completed)
 
 ---
 
@@ -234,6 +284,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 | **Backend Syntax** | PASS | All backend JS files checked with `node -c index.js controllers/*.js models/*.js routes/*.js services/*.js utils/*.js db/*.js middleware/*.js tests/*.js`. |
 | **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000 with `Database: Connected & Migrated ✅`. |
 | **Backend Test Suite (15 suites)** | PASS | `npm test` runs all 15 test files cleanly with 0 errors across 160+ assertions. |
+| **Frontend Test Suite (7 suites, 31 tests)** | PASS | `CI=true npm test -- --watchAll=false` runs all 7 test suites cleanly (31 tests pass). |
+| **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.0f9fa8a5.js`). Pre-existing ESLint warnings documented. |
 | **Plan Authorization & Trial Suite** | PASS | `backend/tests/planAuthorization.test.js`: 12 comprehensive categories (A–L) verifying authenticated ownership, anonymous trial cookies, 403 limit enforcement, trial & user isolation, history isolation, PATCH/DELETE authorization, atomic plan claiming, claim race safety (409), Phase 3 backward compatibility, and error sanitization. |
 | **Auth Endpoints Test Suite** | PASS | `backend/tests/authEndpoints.test.js`: 36 comprehensive tests (A–AJ) covering migrations, scrypt hashing, timing-safe verification, session random tokens, 30-day expiry, signup, login, Google token verification, local account collision protection, /me, logout cookie clearing, and secret stripping. |
 | **Plan Lifecycle Test Suite** | PASS | `backend/tests/planLifecycle.test.js`: 17 comprehensive tests (A–Q) covering metadata updates, field preservation, empty name validation, timestamp management, module preservation, 404 handling, single plan deletion isolation, active session purging, non-active session protection, active session metadata synchronization, partial plan lifecycle, and HTTP controller contracts. |
@@ -248,8 +300,7 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 | **MVP Storage Verification** | PASS | `backend/tests/mvpStorage.test.js`: verifies complete MVP object retention, reproduces regression, and tests consumers + legacy fallback. |
 | **Frontend Routing Verification** | PASS | `backend/tests/frontendRoutes.test.js`: 100% of active `navigate()` calls map to canonical routes; verified `/my-plans` active canonical registration and reachability. |
 | **End-to-End Generation Flow** | PASS | `backend/tests/e2eGenerationFlow.test.js`: deterministic simulation of end-to-end chain from form input to Dashboard/PitchPreview consumption passes with 0 errors. |
-| **Frontend Production Build** | PASS | `npm run build` succeeds cleanly (`main.0139c39c.js`). |
-| **Manual HTTP Verification (9 scenarios)** | PASS | Verified with live Express HTTP server: anonymous creation & cookie, 403 trial limit, cross-visitor isolation, user A plan creation, cross-user isolation, cross-user patch/delete blocked, atomic claim, anonymous revocation after claim, and history isolation. |
+| **Manual & E2E HTTP Verification (Flows A–F)** | PASS | Verified live against Express backend: Flow A (anonymous trial generation + cookie), Flow C (account creation + atomic plan claim + preservation), Flow D (authenticated second plan creation + multi-plan history), Flow E (logout + session cookie revocation + plan retention in DB), and Flow F (anonymous second plan generation 403 TRIAL_LIMIT_REACHED block). |
 
 
 ---

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { 
   Lightbulb, 
   Calendar, 
@@ -18,8 +18,10 @@ import {
   X
 } from 'lucide-react';
 import Header from '../components/Header';
+import { useAuth } from '../context/AuthContext';
 
 const HistoryPage = ({ navigate, isDark, toggleTheme }) => {
+  const { isAuthenticated, openAuthModal } = useAuth();
   const [plans, setPlans] = useState([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -49,10 +51,17 @@ const HistoryPage = ({ navigate, isDark, toggleTheme }) => {
   const [actionFeedback, setActionFeedback] = useState(null);
 
   const fetchPlans = useCallback(async (targetOffset = 0) => {
+    if (!isAuthenticated) {
+      setPlans([]);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get('http://localhost:4000/api/plans', {
+      const res = await api.get('/api/plans', {
         params: {
           limit,
           offset: targetOffset
@@ -72,7 +81,7 @@ const HistoryPage = ({ navigate, isDark, toggleTheme }) => {
     } finally {
       setLoading(false);
     }
-  }, [limit]);
+  }, [limit, isAuthenticated]);
 
   useEffect(() => {
     fetchPlans(0);
@@ -126,7 +135,7 @@ const HistoryPage = ({ navigate, isDark, toggleTheme }) => {
     setEditError(null);
 
     try {
-      const res = await axios.patch(`http://localhost:4000/api/plans/${planToEdit.id}`, {
+      const res = await api.patch(`/api/plans/${planToEdit.id}`, {
         startupName: editForm.startupName.trim(),
         industry: editForm.industry.trim(),
         problem: editForm.problem.trim(),
@@ -176,7 +185,7 @@ const HistoryPage = ({ navigate, isDark, toggleTheme }) => {
     setDeleteError(null);
 
     try {
-      const res = await axios.delete(`http://localhost:4000/api/plans/${planToDelete.id}`);
+      const res = await api.delete(`/api/plans/${planToDelete.id}`);
       if (res.data?.success) {
         const deletedId = planToDelete.id;
         const deletedName = planToDelete.startupName;
@@ -351,15 +360,48 @@ const HistoryPage = ({ navigate, isDark, toggleTheme }) => {
           </div>
         )}
 
-        {/* Empty State */}
-        {!loading && !error && plans.length === 0 && (
+        {/* Anonymous Sign-In State */}
+        {!isAuthenticated && (
+          <div className={`text-center py-20 px-4 rounded-3xl border ${isDark ? 'bg-gray-800/40 border-gray-800' : 'bg-white border-gray-200'} shadow-sm my-6`}>
+            <div className={`w-20 h-20 mx-auto rounded-3xl ${isDark ? 'bg-indigo-950/50 text-indigo-400 border border-indigo-800/60' : 'bg-indigo-50 text-indigo-600 border border-indigo-100'} flex items-center justify-center mb-6`}>
+              <Lightbulb className="w-10 h-10" />
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold mb-3">Your startup plans will appear here</h2>
+            <p className={`max-w-md mx-auto text-sm sm:text-base ${isDark ? 'text-gray-400' : 'text-gray-600'} mb-8`}>
+              Sign in to save, manage, and revisit your startup plans.
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button
+                onClick={() => openAuthModal({
+                  title: 'Sign In to View My Plans',
+                  subtitle: 'Sign in to access, manage, and revisit your saved startup plans.'
+                })}
+                className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-8 py-3.5 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200"
+              >
+                <span>Sign In</span>
+                <ArrowRight className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => navigate('/start')}
+                className={`w-full sm:w-auto px-6 py-3.5 rounded-xl font-semibold border transition-all duration-200 ${
+                  isDark ? 'border-gray-700 hover:bg-gray-800 text-gray-300' : 'border-gray-300 hover:bg-gray-100 text-gray-700'
+                }`}
+              >
+                Create a Free Plan
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Authenticated Empty State */}
+        {isAuthenticated && !loading && !error && plans.length === 0 && (
           <div className={`text-center py-20 px-4 rounded-3xl border ${isDark ? 'bg-gray-800/40 border-gray-800' : 'bg-white border-gray-200'} shadow-sm my-6`}>
             <div className={`w-20 h-20 mx-auto rounded-3xl ${isDark ? 'bg-gray-700/60 text-gray-400' : 'bg-indigo-50 text-indigo-500'} flex items-center justify-center mb-6`}>
               <Lightbulb className="w-10 h-10" />
             </div>
             <h2 className="text-2xl font-bold mb-2">No Saved Plans Yet</h2>
             <p className={`max-w-md mx-auto text-sm sm:text-base ${isDark ? 'text-gray-400' : 'text-gray-600'} mb-8`}>
-              You haven't generated any startup plans yet. Submit a new startup concept to get full Lean Canvas, MVP, revenue models, and pitch deck.
+              You haven't saved any startup plans yet. Submit a new startup concept to get full Lean Canvas, MVP, revenue models, and pitch deck.
             </p>
             <button
               onClick={() => navigate('/start')}

@@ -16,8 +16,9 @@ import {
   Trash2,
   X
 } from 'lucide-react';
-import axios from 'axios';
+import api from '../services/api';
 import Header from '../components/Header';
+import { useAuth } from '../context/AuthContext';
 import {
   OverviewTab,
   LeanCanvasTab,
@@ -29,6 +30,7 @@ import {
 } from '../components/DashboardTabs';
 
 const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
+  const { isAuthenticated, claimCurrentPlan, openAuthModal, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -38,6 +40,11 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
   const [generationErrors, setGenerationErrors] = useState(null);
   const [currentPlanId, setCurrentPlanId] = useState(null);
   const [persistenceStatus, setPersistenceStatus] = useState('not_saved');
+
+  // Trial claiming state
+  const [isClaiming, setIsClaiming] = useState(false);
+  const [claimError, setClaimError] = useState(null);
+  const [isPlanClaimed, setIsPlanClaimed] = useState(false);
 
   // Edit / Delete lifecycle states
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -65,7 +72,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
     setNotFound(false);
 
     try {
-      const res = await axios.get(`http://localhost:4000/api/plans/${planId}`);
+      const res = await api.get(`/api/plans/${planId}`);
       if (res.data?.success && res.data?.data) {
         const plan = res.data.data;
 
@@ -162,7 +169,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
 
       // Verify persisted plan exists on server if an ID is present
       if (storedPlanId) {
-        axios.get(`http://localhost:4000/api/plans/${storedPlanId}`)
+        api.get(`/api/plans/${storedPlanId}`)
           .then((res) => {
             if (res.data?.success && res.data?.data) {
               setPersistenceStatus('saved');
@@ -224,6 +231,47 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
     }
   }, []);
 
+  // Claim trial plan into authenticated user account
+  const executeClaim = async (planIdToClaim) => {
+    if (!planIdToClaim) return;
+    setIsClaiming(true);
+    setClaimError(null);
+    try {
+      const result = await claimCurrentPlan(planIdToClaim);
+      if (result.success) {
+        setIsPlanClaimed(true);
+        setPersistenceStatus('saved');
+        localStorage.setItem('planPersistenceStatus', 'saved');
+        setActionFeedback({
+          type: 'success',
+          message: 'Startup plan saved to your account permanently!'
+        });
+        await refreshUser();
+      }
+    } catch (err) {
+      console.error('[Dashboard] Plan claim failed:', err.message);
+      setClaimError(err.message || 'Failed to claim plan. Please try again.');
+    } finally {
+      setIsClaiming(false);
+    }
+  };
+
+  const handleSaveMyPlan = () => {
+    if (!currentPlanId) return;
+
+    if (isAuthenticated) {
+      executeClaim(currentPlanId);
+    } else {
+      openAuthModal({
+        title: 'Save Your Startup Plan',
+        subtitle: 'Sign in to save this startup plan permanently to your account.',
+        onAuthSuccess: async () => {
+          await executeClaim(currentPlanId);
+        }
+      });
+    }
+  };
+
   useEffect(() => {
     // Extract query parameter ?plan=<id> from window.location or currentPath
     const searchString = window.location.search || (currentPath && currentPath.includes('?') ? '?' + currentPath.split('?')[1] : '');
@@ -264,7 +312,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
     setEditError(null);
 
     try {
-      const res = await axios.patch(`http://localhost:4000/api/plans/${currentPlanId}`, {
+      const res = await api.patch(`/api/plans/${currentPlanId}`, {
         startupName: editForm.startupName.trim(),
         industry: editForm.industry.trim(),
         problem: editForm.problem.trim(),
@@ -323,7 +371,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
     setDeleteError(null);
 
     try {
-      const res = await axios.delete(`http://localhost:4000/api/plans/${currentPlanId}`);
+      const res = await api.delete(`/api/plans/${currentPlanId}`);
       if (res.data?.success) {
         // Clear active session keys
         const PLAN_STORAGE_KEYS = [
@@ -515,6 +563,89 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className={`transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
+            {/* Anonymous Free Trial Plan Banner */}
+            {!isAuthenticated && !isPlanClaimed && currentPlanId && (
+              <div className={`mb-8 p-4 sm:p-5 rounded-2xl border shadow-sm transition-all ${
+                isDark
+                  ? 'bg-gradient-to-r from-indigo-950/70 via-purple-950/50 to-gray-900 border-indigo-800/80 text-white'
+                  : 'bg-gradient-to-r from-indigo-50 via-purple-50 to-white border-indigo-200 text-gray-900'
+              }`}>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-start space-x-3.5">
+                    <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-md flex-shrink-0 mt-0.5 sm:mt-0">
+                      <Sparkles className="w-5 h-5 animate-pulse" />
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300">
+                          Free Trial Plan
+                        </span>
+                      </div>
+                      <h3 className="text-base sm:text-lg font-bold mt-1">
+                        Your complete AI startup plan is ready.
+                      </h3>
+                      <p className={`text-xs sm:text-sm mt-0.5 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                        Sign in to save it permanently and access it from My Plans.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-3 w-full sm:w-auto">
+                    <button
+                      onClick={handleSaveMyPlan}
+                      disabled={isClaiming}
+                      className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-xl font-semibold text-sm text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 shadow-md hover:shadow-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {isClaiming ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Saving Plan...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Save My Plan</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Claim Error Banner */}
+            {claimError && (
+              <div className={`mb-6 p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-sm ${
+                isDark
+                  ? 'bg-rose-950/40 border-rose-800 text-rose-300'
+                  : 'bg-rose-50 border-rose-200 text-rose-800'
+              }`}>
+                <div className="flex items-start space-x-3">
+                  <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-500" />
+                  <div>
+                    <p className="font-semibold">Unable to save plan to account</p>
+                    <p className="text-xs sm:text-sm mt-0.5">{claimError}</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => executeClaim(currentPlanId)}
+                    disabled={isClaiming}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-colors"
+                  >
+                    Retry Saving
+                  </button>
+                  <button
+                    onClick={() => setClaimError(null)}
+                    className="p-1.5 hover:opacity-75"
+                    aria-label="Dismiss error"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Header with Status */}
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8">
               <div>
@@ -533,7 +664,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
                       title={currentPlanId ? `Persisted Plan ID: ${currentPlanId}` : 'Saved to database'}
                     >
                       <CheckCircle2 className="w-4 h-4 text-blue-500" />
-                      <span>Saved to Database</span>
+                      <span>{isAuthenticated ? 'Saved to Your Account' : 'Saved to Database'}</span>
                     </div>
                   )}
                   {persistenceStatus === 'saved' && currentPlanId && (

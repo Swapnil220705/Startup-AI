@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Lightbulb, Target, Users, ArrowRight, Sparkles, CheckCircle, Zap, Brain, Rocket } from 'lucide-react';
 import Header from '../components/Header';
 import { businessDomains } from '../utils/mockData';
-import axios from 'axios';
+import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoading, isDark, toggleTheme }) => {
+  const { openAuthModal } = useAuth();
   const [isVisible, setIsVisible] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [completedFields, setCompletedFields] = useState(new Set());
@@ -54,17 +56,17 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
       console.log('Sending payload:', payload);
 
       const endpoints = [
-        { key: 'leanCanvas', label: 'Lean Canvas', url: 'http://localhost:4000/api/lean-canvas' },
-        { key: 'mvp', label: 'MVP Plan', url: 'http://localhost:4000/api/mvp' },
-        { key: 'revenue', label: 'Revenue Model', url: 'http://localhost:4000/api/revenue' },
-        { key: 'pitch', label: 'Pitch Deck', url: 'http://localhost:4000/api/pitch' },
-        { key: 'personas', label: 'User Personas', url: 'http://localhost:4000/api/personas' },
-        { key: 'competitors', label: 'Competitor Analysis', url: 'http://localhost:4000/api/competitors' }
+        { key: 'leanCanvas', label: 'Lean Canvas', url: '/api/lean-canvas' },
+        { key: 'mvp', label: 'MVP Plan', url: '/api/mvp' },
+        { key: 'revenue', label: 'Revenue Model', url: '/api/revenue' },
+        { key: 'pitch', label: 'Pitch Deck', url: '/api/pitch' },
+        { key: 'personas', label: 'User Personas', url: '/api/personas' },
+        { key: 'competitors', label: 'Competitor Analysis', url: '/api/competitors' }
       ];
 
       // Call all backend endpoints in parallel using Promise.allSettled
       const settledResults = await Promise.allSettled(
-        endpoints.map(ep => axios.post(ep.url, payload))
+        endpoints.map(ep => api.post(ep.url, payload))
       );
 
       const successfulModules = [];
@@ -171,7 +173,7 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
       };
 
       try {
-        const persistRes = await axios.post('http://localhost:4000/api/plans', planPayload);
+        const persistRes = await api.post('/api/plans', planPayload);
         const serverPlanId = persistRes.data?.data?.id;
         if (serverPlanId) {
           localStorage.setItem('currentPlanId', serverPlanId);
@@ -183,10 +185,34 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
           console.warn('[Persistence] Plan persisted but server did not return an ID');
         }
       } catch (persistErr) {
-        // If database persistence fails, preserve generated localStorage data and flag save_failed
-        console.error('[Persistence] Failed to persist plan to server:', persistErr.message);
-        localStorage.setItem('planPersistenceStatus', 'save_failed');
-        localStorage.removeItem('currentPlanId');
+        if (persistErr.response?.status === 403 && persistErr.response?.data?.error?.code === 'TRIAL_LIMIT_REACHED') {
+          console.warn('[Persistence] Anonymous trial limit reached');
+          localStorage.setItem('planPersistenceStatus', 'trial_limit_reached');
+          setIsLoading(false);
+          openAuthModal({
+            title: 'Free Trial Plan Already Saved',
+            subtitle: 'Your free trial plan is already saved. Sign in to create more startup plans.',
+            onAuthSuccess: async () => {
+              try {
+                const retryRes = await api.post('/api/plans', planPayload);
+                const retryId = retryRes.data?.data?.id;
+                if (retryId) {
+                  localStorage.setItem('currentPlanId', retryId);
+                  localStorage.setItem('planPersistenceStatus', 'saved');
+                }
+              } catch (retryErr) {
+                console.error('[Persistence] Retry persistence failed after auth:', retryErr.message);
+              }
+              navigate('/dashboard');
+            }
+          });
+          return;
+        } else {
+          // If database persistence fails, preserve generated localStorage data and flag save_failed
+          console.error('[Persistence] Failed to persist plan to server:', persistErr.message);
+          localStorage.setItem('planPersistenceStatus', 'save_failed');
+          localStorage.removeItem('currentPlanId');
+        }
       }
 
       setIsLoading(false);
