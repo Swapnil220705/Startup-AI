@@ -868,16 +868,183 @@ CREATE INDEX IF NOT EXISTS idx_plan_shares_user_id ON plan_shares(user_id);
 2. **Chunk 5.2 — Pitch Deck & Business Plan PDF Export Engine** (COMPLETED)
    - Implemented print stylesheet rules (`@media print`, `print.css`) and native browser print-to-PDF engine for both Pitch Deck (16:9 landscape, 7 slides) and Business Plan (A4 portrait multi-page document).
    - Wired "Export PDF" on `PitchPreviewPage` and `DashboardTabs` with dynamic `@page` injection, safe title filename suggestion, and defensive data normalization.
-3. **Chunk 5.3 — Plan Sharing Database Foundation & Backend API**
-   - Migration 003 (`plan_shares` table).
+3. **Chunk 5.3 — Plan Sharing Database Foundation & Backend API** (COMPLETED)
+   - Migration 003 (`plan_shares` table with cascading foreign keys to `plans` and `users`).
+   - Implemented `planShareService.js`, `planShareController.js`, `routes/shared.js`, and updated `routes/plans.js`.
    - Endpoints: `POST /api/plans/:id/share`, `DELETE /api/plans/:id/share`, `GET /api/shared/:token`.
-   - Rate limiting, token validation, and error sanitization.
-4. **Chunk 5.4 — Public Shareable Presentation Page & Viral Growth UX**
+   - Cryptographic SHA-256 token hashing at rest, atomic SQL view counter, dynamic plan resolution, and strict public DTO sanitization.
+4. **Chunk 5.4 — Public Shareable Presentation Page & Viral Growth UX** (PENDING)
    - Dedicated route `/share/:token` and component `SharedPitchPage`.
    - Branded read-only presentation viewer with slide navigation and "Create Your Own Startup Plan" CTA.
-5. **Chunk 5.5 — Dashboard & Pitch Preview Share Management UX**
+5. **Chunk 5.5 — Dashboard & Pitch Preview Share Management UX** (PENDING)
    - "Share Link" modal on `DashboardTabs` and `PitchPreviewPage` with 1-click clipboard copy, QR code, and revocation controls.
    - Comprehensive integration tests and end-to-end verification.
 
 ---
+
+## 11. Plan Sharing Architecture (Phase 5.3 Implementation)
+
+### 11.1 Overview & Architecture Flow
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│ OWNER FLOW (AUTHENTICATED)                                                              │
+│                                                                                         │
+│ Founder (Authenticated req.user)                                                       │
+│   │                                                                                     │
+│   ├── POST /api/plans/:id/share ──────────────────┐                                     │
+│   │   (Idempotent create or return active share)  │                                     │
+│   │                                               ▼                                     │
+│   │                                  planShareService.createOrGetActiveShare            │
+│   │                                  - Verify plan ownership (plan.user_id === userId)  │
+│   │                                  - Check existing active share (is_active = 1)      │
+│   │                                  - If none: generate 256-bit token                  │
+│   │                                  - Persist SHA-256 hash in `plan_shares`            │
+│   │                                  - Return raw bearer token & URL to owner           │
+│   │                                                                                     │
+│   └── DELETE /api/plans/:id/share ────────────────┐                                     │
+│       (Revoke active share)                       │                                     │
+│                                                   ▼                                     │
+│                                      planShareService.revokeActiveShare                 │
+│                                      - Verify plan ownership                            │
+│                                      - Update `is_active = 0, revoked_at = datetime`    │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│ PUBLIC VIEWER FLOW (UNAUTHENTICATED)                                                    │
+│                                                                                         │
+│ Public Client / Investor                                                                │
+│   │                                                                                     │
+│   └── GET /api/shared/:token ─────────────────────┐                                     │
+│       (Bearer token credential)                   │                                     │
+│                                                   ▼                                     │
+│                                      planShareService.getSharedPlanByToken              │
+│                                      - Compute SHA-256 hash of incoming rawToken        │
+│                                      - Lookup `plan_shares` by hash & is_active = 1     │
+│                                      - If not found or revoked: return safe HTTP 404    │
+│                                      - Atomically increment view_count (SQL: +1)        │
+│                                      - Fetch current persisted plan dynamically         │
+│                                      - Strictly sanitize DTO via toPublicSharedPlan     │
+│                                      - Return sanitized JSON representation             │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 11.2 Database Schema (Migration 003)
+
+Migration `003_create_plan_shares_table.sql` establishes the persistence foundation:
+
+```sql
+CREATE TABLE IF NOT EXISTS plan_shares (
+  id TEXT PRIMARY KEY NOT NULL,
+  plan_id TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  share_token TEXT NOT NULL UNIQUE,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  view_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  revoked_at TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_shares_token ON plan_shares(share_token);
+CREATE INDEX IF NOT EXISTS idx_plan_shares_plan_id ON plan_shares(plan_id);
+CREATE INDEX IF NOT EXISTS idx_plan_shares_user_id ON plan_shares(user_id);
+CREATE INDEX IF NOT EXISTS idx_plan_shares_active ON plan_shares(plan_id, is_active);
+```
+
+#### Schema Constraints & Cascade Guarantees
+1. **Foreign Key to `plans` (`ON DELETE CASCADE`)**: When a plan is deleted by its owner (`DELETE /api/plans/:id`), SQLite automatically purges all associated records in `plan_shares`.
+2. **Foreign Key to `users` (`ON DELETE CASCADE`)**: If an owner account is removed, all issued shares are cleanly purged.
+3. **Token Column (`share_token`)**: Stores a 64-character hexadecimal SHA-256 digest of the raw bearer token. Indexed uniquely for $O(1)$ lookups.
+4. **Lifecycle Columns (`is_active`, `revoked_at`)**: Active shares maintain `is_active = 1` and `revoked_at = NULL`. Revoking an active share preserves audit records with `is_active = 0` and timestamped `revoked_at`.
+
+---
+
+### 11.3 Cryptographic Token & Security Storage Architecture
+
+1. **Token Generation & Entropy**:
+   - Generated server-side using Node's cryptographic PRNG: `crypto.randomBytes(32).toString('hex')`.
+   - Yields a 64-character lowercase hexadecimal string providing 256 bits of cryptographic entropy ($2^{256}$ search space).
+   - Resistant to brute-force, dictionary attacks, and enumeration.
+
+2. **Hashed Token Storage at Rest**:
+   - The database **never stores raw bearer tokens**.
+   - Instead, the SHA-256 hash (`crypto.createHash('sha256').update(rawToken).digest('hex')`) is stored in `plan_shares.share_token`.
+   - If the database is compromised, dumped, or leaked, attackers cannot reconstruct working bearer URLs.
+   - The raw token is returned **only once** to the authenticated owner upon initial share creation (`POST /api/plans/:id/share`).
+
+3. **Public Token Verification**:
+   - The client supplies `:token` in the public URL path (`/api/shared/:token`).
+   - The server computes `hash = SHA256(rawToken)` and queries `plan_shares WHERE share_token = hash AND is_active = 1 AND revoked_at IS NULL`.
+   - Raw tokens are never logged or exposed in unhandled error messages.
+
+---
+
+### 11.4 Share Lifecycle & Idempotency Rules
+
+- **Single Active Share Per Plan**: A plan may only have one active share at any given moment.
+- **Idempotent Create**: If an authenticated owner calls `POST /api/plans/:id/share` on a plan with an existing active share, the server returns the existing active share metadata (`200 OK`, `alreadyExists: true`) rather than generating new tokens or accumulating duplicate active records.
+- **Revocation**: When an owner calls `DELETE /api/plans/:id/share`, the active share record is updated to `is_active = 0` and `revoked_at = ISO_TIMESTAMP`. It can never be reactivated.
+- **Re-Sharing After Revocation**: Calling `POST /api/plans/:id/share` on a previously revoked plan generates a **brand-new 256-bit token** and inserts a new active share row.
+
+---
+
+### 11.5 Authorization & Security Boundaries
+
+1. **Owner Derivation**:
+   - All management endpoints (`POST /api/plans/:id/share`, `DELETE /api/plans/:id/share`) derive the owner identity strictly from `req.user.id` via `authenticateUser` and `requireAuth`.
+   - Client-supplied user IDs or ownership parameters are strictly ignored.
+2. **Safe 404 Responses**:
+   - If a requested plan does not exist, or belongs to another user, or is an unclaimed anonymous trial plan (`user_id === null`), the server returns `404 PLAN_NOT_FOUND`.
+   - This prevents user enumeration and reveals no information regarding whether another user's plan exists.
+   - For public requests, non-existent, invalid, or revoked tokens return an identical `404 SHARE_NOT_FOUND` response with uniform timing.
+3. **Anonymous Trial Policy**:
+   - Anonymous visitors (`user_id = NULL`) cannot share plans.
+   - Calling share management without an active session triggers `401 UNAUTHORIZED`.
+   - An anonymous trial plan must first be claimed via authentication (`POST /api/plans/claim`) before the owner can generate a public share link.
+
+---
+
+### 11.6 Dynamic Plan Content & View Counting
+
+1. **Dynamic Content Resolution**:
+   - The public share endpoint reads live persisted plan data from `plans` at request time.
+   - Plans are **not snapshot** into static share records. If an owner edits their plan's startup name, problem, or solution, public viewers immediately see the updated content upon refresh.
+2. **Atomic View Counting**:
+   - Each successful public retrieval (`GET /api/shared/:token`) executes an atomic SQL increment:
+     ```sql
+     UPDATE plan_shares SET view_count = view_count + 1 WHERE id = ?;
+     ```
+   - Invalid, expired, revoked, or non-existent requests do not increment the counter.
+
+---
+
+### 11.7 Public Response Sanitization Contract (`toPublicSharedPlan`)
+
+The public endpoint `GET /api/shared/:token` applies strict DTO sanitization via `toPublicSharedPlan(planRow)`:
+
+| Field Name | Type | Sanitization & Safety Guarantee |
+|---|---|---|
+| `id` | `string` | Safe plan UUID |
+| `startupName` | `string` | Startup name |
+| `industry` | `string` | Industry/domain |
+| `problem` | `string` | Problem statement |
+| `solution` | `string` | Solution statement |
+| `targetAudience` | `string` | Target market |
+| `usp` | `string` | Unique selling proposition |
+| `leanCanvas` | `object` | Parsed 9-box lean canvas |
+| `mvp` | `object` | Parsed MVP roadmap |
+| `revenue` | `array` | Parsed pricing/monetization streams |
+| `pitch` | `object` | Parsed pitch deck slides & elevator pitch |
+| `personas` | `array` | Parsed user personas |
+| `competitors` | `array` | Parsed competitive benchmark |
+| `createdAt` | `string` | Plan creation ISO timestamp |
+| `updatedAt` | `string` | Plan last updated ISO timestamp |
+
+**Strictly Excluded from Public Output**:
+- `user_id` / `userId` (owner identity completely hidden)
+- Owner email, name, avatar, or credentials
+- Session tokens, cookie parameters, trial session tokens
+- Database internal `rowid`
+- Internal `generation_errors` or `generationErrors`
+- Model execution metadata or server stack traces
 

@@ -48,6 +48,7 @@ const personaRoutes = require('./routes/personas');
 const competitorRoutes = require('./routes/competitors');
 const planRoutes = require('./routes/plans');
 const authRoutes = require('./routes/auth');
+const sharedRoutes = require('./routes/shared');
 
 app.use('/api/lean-canvas', leanCanvasRoutes);
 app.use('/api/mvp', mvpRoutes);
@@ -57,6 +58,7 @@ app.use('/api/personas', personaRoutes);
 app.use('/api/competitors', competitorRoutes);
 app.use('/api/plans', planRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/shared', sharedRoutes);
 
 const PORT = process.env.PORT || 4000;
 if (require.main === module) {

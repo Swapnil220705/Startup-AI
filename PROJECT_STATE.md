@@ -307,10 +307,10 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 4.4: Frontend Auth UX, Google Sign-In & Dashboard Claim Flow (Completed - `9439267`)
 - **Phase 5: Pitch Deck Export & Sharing (IN PROGRESS)**
   - Chunk 5.1: Export & Sharing Architecture Audit (Completed - `6f07fa3`)
-  - Chunk 5.2: Pitch Deck & Business Plan PDF Export Engine (COMPLETED)
-  - Chunk 5.3: Plan Sharing Database Foundation & Backend API
-  - Chunk 5.4: Public Shareable Presentation Page & Viral Growth UX
-  - Chunk 5.5: Dashboard & Pitch Preview Share Management UX
+  - Chunk 5.2: Pitch Deck & Business Plan PDF Export Engine (Completed - `af6e47b`)
+  - Chunk 5.3: Plan Sharing Database Foundation & Backend API (COMPLETED)
+  - Chunk 5.4: Public Shareable Presentation Page & Viral Growth UX (PENDING)
+  - Chunk 5.5: Dashboard & Pitch Preview Share Management UX (PENDING)
 - **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
 
 ---
@@ -318,12 +318,12 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `6f07fa3` (docs: audit phase 5 export and sharing architecture)
+- **Pre-Chunk Commit**: `af6e47b` (feat: add client side pdf export engine)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
 - **Phase 4 Status**: COMPLETED
-- **Phase 5 Status**: IN PROGRESS (Chunk 5.1 & Chunk 5.2 Completed)
+- **Phase 5 Status**: IN PROGRESS (Chunks 5.1, 5.2 & 5.3 Completed)
 
 ---
 
@@ -332,10 +332,12 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 | Verification Check | Result | Details |
 |---|---|---|
 | **Backend Syntax** | PASS | Checked with `node -c index.js controllers/*.js models/*.js routes/*.js services/*.js utils/*.js db/*.js middleware/*.js tests/*.js` with 0 errors. |
-| **Backend Test Suite (15 suites)** | PASS | `npm test` runs all 15 test suites cleanly with 0 errors across 160+ assertions. |
-| **Frontend Test Suite (9 suites, 46 tests)** | PASS | `CI=true npm test -- --watchAll=false` runs all 9 suites cleanly (46/46 tests pass), including new `exportHelpers.test.js` (data normalization, 7 slides, business plan doc, print trigger) and `ExportViews.test.js` (PitchDeckPrintView, BusinessPlanPrintView, ExportTab). |
-| **Frontend Production Build** | PASS | `npm run build` compiles with 0 errors (`main.e2bd4b6b.js`). Zero ESLint warnings in newly created export code. |
-| **Manual Browser Verification (Flows A–E)** | PASS | Automated & browser subagent verified on Chromium: Flow A (Pitch Deck 7 slides, print-only DOM container, landscape print trigger), Flow B (Business Plan portrait multi-page document, all sections, print trigger), Flow C (Dark Mode active on screen, print output light-safe), Flow D (Partial plan handling without crashing), and Flow E (Mobile 375x667 viewport responsiveness). |
+| **Backend Test Suite (16 suites)** | PASS | `npm test` runs all 16 test suites cleanly with 0 errors across 180+ assertions, including newly registered `tests/planSharing.test.js`. |
+| **Plan Sharing Test Suite** | PASS | `backend/tests/planSharing.test.js`: 10 comprehensive categories (A–J) verifying Migration 003 schema/cascading deletion, authenticated share creation (256-bit entropy, view_count 0, SHA-256 hash storage), idempotent active shares, share revocation and regeneration, dynamic public plan retrieval, strict response sanitization (no user/owner/session/error leakage), atomic SQL view counting, multi-user isolation, anonymous trial boundary & post-claim sharing, and token privacy/error hygiene. |
+| **Live HTTP & API Verification (12 points)** | PASS | Verified against Express server instance: 1) Authenticated owner creates share (201), 2) Idempotent repeat create returns existing active share (200), 3) Anonymous user rejected (401), 4) Non-owner returns safe 404, 5) Valid public token returns strictly sanitized plan (200), 6) Invalid token returns safe 404, 7) Owner revokes share (200), 8) Revoked token returns safe 404, 9) Plan deletion cascades and purges shares, 10) Unclaimed trial plan returns 404, 11) Claimed trial plan shared and retrieved successfully (201/200), and 12) Atomic view count incremented accurately. |
+| **Frontend Test Suite (9 suites, 46 tests)** | PASS | `CI=true npm test` runs all 9 suites cleanly (46/46 tests pass), with 0 regressions. |
+| **Frontend Production Build** | PASS | `npm run build` compiles with 0 errors (`main.e2bd4b6b.js`). Zero ESLint warnings in newly created backend/export code. |
+| **Manual Browser Verification (Flows A–E)** | PASS | Verified on Chromium in Phase 5.2: Flow A (Pitch Deck 7 slides print container), Flow B (Business Plan portrait multi-page document), Flow C (Dark Mode print safety), Flow D (Partial plan handling), and Flow E (Mobile 375x667 viewport responsiveness). |
 | **Backend Startup** | PASS | `node index.js` runs cleanly on port 4000 with `Database: Connected & Migrated ✅`. |
 | **Plan Authorization & Trial Suite** | PASS | `backend/tests/planAuthorization.test.js`: 12 comprehensive categories (A–L) verifying authenticated ownership, anonymous trial cookies, 403 limit enforcement, trial & user isolation, history isolation, PATCH/DELETE authorization, atomic plan claiming, claim race safety (409), Phase 3 backward compatibility, and error sanitization. |
 | **Auth Endpoints Test Suite** | PASS | `backend/tests/authEndpoints.test.js`: 36 comprehensive tests (A–AJ) covering migrations, scrypt hashing, timing-safe verification, session random tokens, 30-day expiry, signup, login, Google token verification, local account collision protection, /me, logout cookie clearing, and secret stripping. |
