@@ -8,6 +8,7 @@ import IdeaInputPage from './pages/IdeaInputPage';
 import DashboardPage from './pages/DashboardPage';
 import PitchPreviewPage from './pages/PitchPreviewPage';
 import HistoryPage from './pages/HistoryPage';
+import SharedPlanPage from './pages/SharedPlanPage';
 import AuthModal from './components/AuthModal';
 import { mockDashboardData } from './utils/mockData';
 
@@ -70,6 +71,19 @@ const GlobalAuthModal = ({ isDark }) => {
 const AppContent = ({ currentPath, navigate, isDark, toggleTheme, formData, setFormData, isLoading, setIsLoading }) => {
   const renderPage = () => {
     const basePath = (currentPath || '').split('?')[0];
+
+    if (basePath === '/share' || basePath.startsWith('/share/')) {
+      const token = basePath.startsWith('/share/') ? basePath.slice('/share/'.length) : '';
+      return (
+        <SharedPlanPage 
+          token={token} 
+          navigate={navigate} 
+          isDark={isDark} 
+          toggleTheme={toggleTheme} 
+        />
+      );
+    }
+
     switch (basePath) {
       case '/':
         return <LandingPage navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} />;

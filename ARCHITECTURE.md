@@ -1048,3 +1048,67 @@ The public endpoint `GET /api/shared/:token` applies strict DTO sanitization via
 - Internal `generation_errors` or `generationErrors`
 - Model execution metadata or server stack traces
 
+---
+
+## 12. Public Shareable Presentation Page Architecture (Phase 5.4)
+
+### 12.1 Overview & Routing Integration
+
+The public shared presentation page exposes read-only startup plans via the frontend route:
+```text
+/share/:token
+```
+- **Custom Router Integration**: Handled in `frontend/src/App.js` and `src/utils/Router.js`. `basePath` checks identify `/share` or paths starting with `/share/`, safely extracting the token parameter and rendering `SharedPlanPage.js`.
+- **Zero Authentication Requirement**: Visitors can load and view shared plans without logging in, without trial cookies, and without being redirected to `/` or an auth modal.
+- **Client-Side Authorization Isolation**: The public page makes no client-side authorization assumptions. It fetches `GET /api/shared/:token` and relies on backend token validation.
+
+---
+
+### 12.2 Public Page Lifecycle & States
+
+`SharedPlanPage.js` manages four explicit application states:
+
+1. **Initial Loading (`loading`)**:
+   - Clean, animated skeleton loader with pulsing badges and cards.
+   - Prevents flashing unstyled content or jarring layout shifts.
+2. **Successful Retrieval (`success`)**:
+   - Renders an executive business document presentation with 8 primary sections:
+     1. *Startup Overview*: Name, domain, elevator pitch, USP, and metadata badges.
+     2. *Problem & Proposed Solution*: Card-by-card breakdown with target market.
+     3. *Lean Canvas*: 9-box responsive grid preserving exact framework sections.
+     4. *MVP Roadmap*: Core capabilities, technical architecture stack, and phased milestones.
+     5. *Revenue & Monetization*: Pricing models, tiers, and financial forecasts.
+     6. *User Personas*: Archetype profiles with demographics, core pain points, and motivations.
+     7. *Competitive Benchmark*: Landscape table/cards with key differentiators and defensibility.
+     8. *Plan Information*: ISO timestamps (`createdAt`, `updatedAt`) without exposing database IDs.
+   - Missing/partial modules gracefully degrade or display restrained "Not provided" notices without crashing.
+3. **Unavailable Link (`unavailable`)**:
+   - Displayed on HTTP 404, 410, or when the token is missing/revoked.
+   - Uniform neutral public message: *"This shared plan is unavailable. The link may have expired or been revoked."*
+   - Strictly obscures whether the token ever existed, who owns the plan, or why access failed.
+4. **Network / Server Failure (`network_error`)**:
+   - Displayed on network loss or HTTP 5xx responses.
+   - Clear distinction from invalid links with a prominent **Try Again** retry action.
+
+---
+
+### 12.3 Search Engine & Indexing Directives
+
+Because shared startup plans contain sensitive proprietary business concepts:
+1. **Robots Meta Tag**:
+   - Upon mount, `SharedPlanPage.js` dynamically creates or updates `<meta name="robots" content="noindex, nofollow, noarchive" />` in document `<head>`.
+   - On component unmount, the element is cleaned up to prevent affecting other application routes.
+2. **Limitations**:
+   - `noindex, nofollow, noarchive` instructs compliant web crawlers not to index or cache the page.
+   - It **does not** provide cryptographic access control or make the URL private; anyone with the unhashed bearer token can access the read-only presentation.
+   - Public plan URLs are excluded from sitemaps.
+
+---
+
+### 12.4 Security & Data Hygiene Guarantees
+
+- **Bearer Token Handling**: The share token is passed directly from URL props to the Axios request. It is **never** written to `localStorage`, `sessionStorage`, cookies, analytics, or error logs.
+- **Strict React Text Rendering**: Plan content is rendered purely as React children; `dangerouslySetInnerHTML` is strictly prohibited to prevent XSS.
+- **Read-Only Enclosure**: No owner actions, edit controls, delete triggers, or plan mutation APIs are rendered.
+- **Privacy Enforcement**: Owner identity, user ID, email, session cookies, and internal backend generation errors are strictly excluded from both the API response and DOM rendering.
+
