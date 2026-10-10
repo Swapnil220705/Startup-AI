@@ -16,7 +16,7 @@ import {
   ChevronRight,
   Star,
   Download,
-  ExternalLink,
+  Share2,
   Globe,
   Lightbulb,
   Shield,
@@ -726,7 +726,7 @@ export const PersonasTab = ({ data, isDark }) => {
   );
 };
 
-export const ExportTab = ({ data, navigate, isDark }) => {
+export const ExportTab = ({ data, navigate, isDark, onOpenShare }) => {
   const [isExporting, setIsExporting] = useState(false);
   
   const handleExportBusinessPlan = () => {
@@ -885,20 +885,24 @@ export const ExportTab = ({ data, navigate, isDark }) => {
         </div>
 
         {/* Share Link */}
-        <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg transition-all duration-300 text-center opacity-75`}>
+        <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg hover:shadow-xl transition-all duration-300 text-center`}>
           <div className="w-12 h-12 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <ExternalLink className="w-6 h-6 text-white" />
+            <Share2 className="w-6 h-6 text-white" />
           </div>
-          <div className="inline-block px-2 py-0.5 mb-2 rounded-full text-xs font-semibold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
-            Coming Soon
+          <div className="inline-block px-2 py-0.5 mb-2 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
+            Public Presentation
           </div>
-          <h4 className="font-semibold mb-2">Share Link</h4>
+          <h4 className="font-semibold mb-2">Share Online</h4>
           <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} mb-4`}>
-            Public shareable online plan link
+            Generate and manage your public presentation link
           </p>
-          <button disabled className="text-gray-400 font-medium text-sm flex items-center justify-center space-x-1 mx-auto cursor-not-allowed">
+          <button 
+            type="button"
+            onClick={onOpenShare}
+            className="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 font-medium text-sm flex items-center justify-center space-x-1 mx-auto hover:underline cursor-pointer"
+          >
             <Globe className="w-4 h-4" />
-            <span>Unavailable</span>
+            <span>Manage Link</span>
           </button>
         </div>
       </div>

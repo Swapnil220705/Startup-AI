@@ -15,6 +15,10 @@
  * - J: Token security & error hygiene (raw token never stored in plain text, hash never leaked, safe 404 uniform error shape)
  */
 
+require('dotenv').config();
+if (!process.env.SHARE_ENCRYPTION_KEY) {
+  process.env.SHARE_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+}
 const assert = require('assert');
 const crypto = require('crypto');
 const { createDatabaseInstance } = require('../db/database');

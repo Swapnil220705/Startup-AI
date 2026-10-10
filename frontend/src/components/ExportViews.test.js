@@ -105,10 +105,10 @@ describe('Print Views and Export UI', () => {
     render(<ExportTab data={mockPlan} navigate={jest.fn()} isDark={false} />);
 
     const comingSoonBadges = screen.getAllByText(/Coming Soon/i);
-    expect(comingSoonBadges.length).toBe(2); // Financial Model and Share Link
+    expect(comingSoonBadges.length).toBe(1); // Financial Model (Share Link implemented in Phase 5.5)
 
     const unavailableButtons = screen.getAllByRole('button', { name: /Unavailable/i });
-    expect(unavailableButtons.length).toBe(2);
+    expect(unavailableButtons.length).toBe(1);
     unavailableButtons.forEach(btn => expect(btn).toBeDisabled());
   });
 });

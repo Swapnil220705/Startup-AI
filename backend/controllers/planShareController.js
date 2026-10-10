@@ -1,6 +1,7 @@
 // backend/controllers/planShareController.js
 const {
   createOrGetActiveShare,
+  getActiveShareStatus,
   revokeActiveShare,
   getSharedPlanByToken
 } = require('../services/planShareService');
@@ -12,8 +13,10 @@ const {
  * Requirements:
  * - Requires authenticated user (req.user)
  * - Derives ownership strictly on the server
- * - Returns existing active share if already active (idempotent)
- * - Returns 404 for non-existent or unowned plans
+ * - Returns existing active share if already active (idempotent recovery)
+ * - Supports explicit link replacement when replace: true
+ * - Returns safe 404 for non-existent or unowned plans
+ * - Fails safely if encryption key is not configured
  */
 async function createShareController(req, res) {
   try {
@@ -39,7 +42,8 @@ async function createShareController(req, res) {
       });
     }
 
-    const result = createOrGetActiveShare(id.trim(), userId);
+    const shouldReplace = req.body?.replace === true || req.query?.replace === 'true';
+    const result = createOrGetActiveShare(id.trim(), userId, { replace: shouldReplace });
 
     if (!result) {
       return res.status(404).json({
@@ -51,18 +55,82 @@ async function createShareController(req, res) {
       });
     }
 
-    const statusCode = result.isExisting ? 200 : 201;
+    const statusCode = (result.isExisting && !result.share?.replaced) ? 200 : 201;
     return res.status(statusCode).json({
       success: true,
       data: result.share
     });
   } catch (error) {
+    if (error.message && error.message.includes('SHARE_ENCRYPTION_KEY')) {
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'ENCRYPTION_CONFIGURATION_ERROR',
+          message: 'Share link encryption is not configured on the server.'
+        }
+      });
+    }
     console.error('Create Share Error:', error.message);
     return res.status(500).json({
       success: false,
       error: {
         code: 'SHARE_CREATION_FAILED',
         message: 'Failed to create share link.'
+      }
+    });
+  }
+}
+
+/**
+ * Controller to retrieve current share status for an owned plan without generating a link.
+ * GET /api/plans/:id/share
+ */
+async function getShareStatusController(req, res) {
+  try {
+    const { id } = req.params;
+    if (!id || typeof id !== 'string' || !id.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'Plan ID is required.'
+        }
+      });
+    }
+
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required. Please sign in to manage plan sharing.'
+        }
+      });
+    }
+
+    const status = getActiveShareStatus(id.trim(), userId);
+    if (!status) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'PLAN_NOT_FOUND',
+          message: 'Plan not found.'
+        }
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: status
+    });
+  } catch (error) {
+    console.error('Get Share Status Error:', error.message);
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'SHARE_STATUS_FAILED',
+        message: 'Failed to retrieve share status.'
       }
     });
   }
@@ -188,6 +256,7 @@ async function getSharedPlanController(req, res) {
 
 module.exports = {
   createShareController,
+  getShareStatusController,
   revokeShareController,
   getSharedPlanController
 };

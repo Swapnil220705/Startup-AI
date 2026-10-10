@@ -14,11 +14,13 @@ import {
   RefreshCw,
   Edit3,
   Trash2,
+  Share2,
   X
 } from 'lucide-react';
 import api from '../services/api';
 import Header from '../components/Header';
 import { useAuth } from '../context/AuthContext';
+import ShareModal from '../components/ShareModal';
 import {
   OverviewTab,
   LeanCanvasTab,
@@ -42,6 +44,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
   const [generationErrors, setGenerationErrors] = useState(null);
   const [currentPlanId, setCurrentPlanId] = useState(null);
   const [persistenceStatus, setPersistenceStatus] = useState('not_saved');
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   // Trial claiming state
   const [isClaiming, setIsClaiming] = useState(false);
@@ -688,6 +691,25 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
                   {persistenceStatus === 'saved' && currentPlanId && (
                     <div className="inline-flex items-center space-x-2">
                       <button
+                        onClick={() => {
+                          if (!isAuthenticated) {
+                            openAuthModal({
+                              title: 'Sign In to Share Plan',
+                              subtitle: 'Save and claim your startup plan to an account before generating public share links.'
+                            });
+                            return;
+                          }
+                          setIsShareModalOpen(true);
+                        }}
+                        className={`inline-flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                          isDark ? 'border-indigo-800 bg-indigo-950/60 text-indigo-300 hover:bg-indigo-900/80 hover:text-white' : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                        }`}
+                        title="Share plan publicly"
+                      >
+                        <Share2 className="w-3.5 h-3.5" />
+                        <span>Share</span>
+                      </button>
+                      <button
                         onClick={handleStartEditDetails}
                         className={`inline-flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                           isDark ? 'border-gray-700 bg-gray-800/80 text-gray-300 hover:bg-gray-700 hover:text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
@@ -911,7 +933,23 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
               {activeTab === 'revenue' && <RevenueTab data={data} isDark={isDark} />}
               {activeTab === 'competitors' && <CompetitorsTab data={data} isDark={isDark} />}
               {activeTab === 'personas' && <PersonasTab data={data} isDark={isDark} />}
-              {activeTab === 'export' && <ExportTab data={data} navigate={navigate} isDark={isDark} />}
+              {activeTab === 'export' && (
+                <ExportTab 
+                  data={data} 
+                  navigate={navigate} 
+                  isDark={isDark} 
+                  onOpenShare={() => {
+                    if (!isAuthenticated) {
+                      openAuthModal({
+                        title: 'Sign In to Share Plan',
+                        subtitle: 'Save and claim your startup plan to an account before generating public share links.'
+                      });
+                      return;
+                    }
+                    setIsShareModalOpen(true);
+                  }}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -1135,6 +1173,15 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
           </div>
         </div>
       )}
+
+      {/* Share Management Modal */}
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        planId={currentPlanId}
+        planName={data?.overview?.name}
+        isDark={isDark}
+      />
       </div>
       <BusinessPlanPrintView data={data} />
     </>

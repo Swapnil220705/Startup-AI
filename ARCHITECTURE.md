@@ -1112,3 +1112,134 @@ Because shared startup plans contain sensitive proprietary business concepts:
 - **Read-Only Enclosure**: No owner actions, edit controls, delete triggers, or plan mutation APIs are rendered.
 - **Privacy Enforcement**: Owner identity, user ID, email, session cookies, and internal backend generation errors are strictly excluded from both the API response and DOM rendering.
 
+---
+
+## 13. Share Management UX and Secure Existing-Link Recovery (Phase 5.5)
+
+### 13.1 Overview & Goals
+
+Phase 5.5 completes the end-to-end plan-sharing lifecycle for authenticated plan owners. In Phase 5.3, public share tokens were stored solely as one-way SHA-256 hashes (`share_token`). While this prevented plaintext token exposure in the database, it prevented owners from recovering and copying their active link upon reopening the sharing interface.
+
+Phase 5.5 introduces:
+1. **Authenticated AES-256-GCM Encryption**: Secure reversible token storage via an encrypted token column (`encrypted_token`), enabling authenticated owners to recover and copy their active link without regenerating new links or storing plaintext tokens.
+2. **Database Migration 004**: Adds `encrypted_token TEXT` to the `plan_shares` table.
+3. **Graceful Legacy Share Handling**: Existing Phase 5.3 share records (which have `encrypted_token = NULL`) are identified with `requiresReplacement: true` without fabricating invalid tokens or revoking existing public links prematurely.
+4. **Atomic Link Replacement**: Explicit owner-confirmed replacement revokes the legacy or compromised link and issues a fresh token within a SQLite transaction, enforcing the one-active-share-per-plan invariant.
+5. **Dashboard & Export Tab Integration**: A polished, responsive `ShareModal` accessible from both the `DashboardPage` header and the `ExportTab`, featuring explicit lifecycle states, clipboard integration, view analytics, and error recovery.
+
+---
+
+### 13.2 Authenticated Encryption Architecture (AES-256-GCM)
+
+Implemented in `backend/utils/encryption.js`:
+
+```text
+Plaintext Raw Token (64-char Hex, 256 bits entropy)
+   │
+   ├─► SHA-256 Hash ─────────► Stored in `share_token` (Public DB lookup)
+   │
+   └─► AES-256-GCM Encryption ──► Stored in `encrypted_token` (Owner recovery)
+         ▲
+         ├─ Key: SHARE_ENCRYPTION_KEY (32 bytes / 256 bits)
+         ├─ IV: 12 bytes cryptographically random nonce
+         └─ Auth Tag: 16 bytes GCM authentication tag
+```
+
+- **Cipher Specification**: `aes-256-gcm` authenticated encryption with 96-bit (12-byte) initialization vector (IV) and 128-bit (16-byte) authentication tag.
+- **Serialization Format**: `ivHex:tagHex:ciphertextHex`.
+- **Key Configuration (`SHARE_ENCRYPTION_KEY`)**:
+  - Supplied via environment variable as 64-hexadecimal characters or 32 raw bytes.
+  - Validated at startup / runtime; rejects non-32-byte keys with descriptive configuration errors.
+  - Documented in `.env.example` with instructions on generating keys via `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+  - **Zero Plaintext Fallback**: If the key is missing or invalid, encryption throws an error and rejects share creation; it *never* stores raw or unencrypted tokens.
+- **Decryption Integrity**: Decryption verifies the GCM authentication tag. If the tag fails verification, ciphertext is corrupted, or key is incorrect, it fails safely returning `null` without throwing fatal unhandled exceptions.
+
+---
+
+### 13.3 Database Migration 004
+
+Implemented in `backend/db/migrations/004_add_encrypted_token_to_plan_shares.sql`:
+```sql
+-- Migration 004: Add encrypted_token column to plan_shares for authenticated owner link recovery
+ALTER TABLE plan_shares ADD COLUMN encrypted_token TEXT;
+```
+- Fully backward compatible with Migration 003.
+- Existing records have `encrypted_token = NULL` and transition through the legacy replacement workflow.
+
+---
+
+### 13.4 API Endpoints & Contract Extensions
+
+1. **`GET /api/plans/:id/share`**:
+   - Requires authenticated plan owner (`authMiddleware`).
+   - Returns current sharing status without mutating state:
+     - If no active share: `{ success: true, data: { isActive: false, share: null } }`.
+     - If active share with encrypted token: `{ success: true, data: { isActive: true, share: { id, shareUrl, views, createdAt, requiresReplacement: false } } }`.
+     - If active legacy share (null `encrypted_token`): `{ success: true, data: { isActive: true, share: { id, shareUrl: null, views, createdAt, requiresReplacement: true } } }`.
+   - Returns 404 for non-owners or non-existent plans.
+
+2. **`POST /api/plans/:id/share`**:
+   - Accepts optional `{ replace: true }` body payload.
+   - If no active share exists: creates new share with SHA-256 hash in `share_token` and AES-256-GCM ciphertext in `encrypted_token`. Returns 201 with `shareUrl`.
+   - If active share exists and `replace !== true`:
+     - If recoverable: returns existing `shareUrl` idempotently (200).
+     - If legacy unrecoverable: returns `{ requiresReplacement: true, shareUrl: null }` (200).
+   - If `replace === true`: executes atomic transaction revoking active share (`is_active = 0, revoked_at = datetime('now')`) and inserting fresh share with new raw token. Returns 201 with fresh `shareUrl`.
+
+3. **`DELETE /api/plans/:id/share`**:
+   - Requires authenticated plan owner.
+   - Sets `is_active = 0, revoked_at = datetime('now')` for active share.
+   - Returns `{ success: true, message: 'Share link revoked successfully' }`.
+
+4. **`GET /api/shared/:token`**:
+   - Public read-only endpoint remains completely unchanged.
+   - Hashes incoming raw token with SHA-256 and queries `share_token`.
+   - Increments view count atomically.
+   - Strictly sanitizes public DTO, omitting `share_token`, `encrypted_token`, `plan_id`, and owner information.
+
+---
+
+### 13.5 Share-Management Frontend UX & State Machine
+
+Implemented in `frontend/src/components/ShareModal.js`:
+
+```text
+┌──────────────┐
+│   Loading    │
+└──────┬───────┘
+       ▼
+┌────────────────────────────────────────────────────────┐
+│                      State Match                       │
+├──────────────────┬─────────────────┬───────────────────┤
+▼                  ▼                 ▼                   ▼
+[No Active Share]  [Active Share]    [Legacy Share]      [Error State]
+│                  │                 │                   │
+├─ "Plan Private"  ├─ Copyable URL   ├─ "Unrecoverable"  └─ Retry CTA
+├─ Create Button   ├─ View Count     ├─ Replace Warning
+│                  ├─ Copy CTA       ├─ Replace CTA
+│                  └─ Revoke CTA     │
+│                         │          │
+│                         ▼          ▼
+│                  [Confirm Dialogs: Revoke / Replace]
+│                         │
+▼                         ▼
+[Success Feedback / Fresh State Hydration]
+```
+
+- **Entry Points**:
+  - `DashboardPage` header button next to Edit and Delete for persisted plans.
+  - `ExportTab` card "Share Online" (replaces previous "Coming Soon" placeholder).
+- **Ownership & Auth Enforcement**: Unauthenticated trial users attempting to share are intercepted and prompted with an authentication modal explaining they must sign in / claim the plan first.
+- **Clipboard Management**: Uses `navigator.clipboard.writeText` with smooth fallback to an auto-focusing selectable input field with copy instructions for environments without clipboard API permissions.
+- **Defensive State Synchronization**: Modal resets and refetches status whenever opened or when the active `planId` changes, preventing stale state leaks across plans.
+
+---
+
+### 13.6 Security & Privacy Invariants
+
+- **Zero Plaintext Token Storage**: Raw tokens exist only ephemerally during creation and recovery; database records contain only SHA-256 hashes and AES-256-GCM ciphertexts.
+- **Server-Side Ownership Verification**: Client user IDs are never trusted; `req.user.id` is enforced against `plans.user_id`.
+- **Public DTO Sanitization**: Neither `share_token` (hash) nor `encrypted_token` (ciphertext/nonce/tag) is ever returned in public or owner responses.
+- **Cryptographic Entropy**: Raw tokens generated via `crypto.randomBytes(32).toString('hex')` (256 bits of entropy).
+
+

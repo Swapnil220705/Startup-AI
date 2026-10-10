@@ -1,6 +1,7 @@
 // backend/services/planShareService.js
 const crypto = require('crypto');
 const dbModule = require('../db/database');
+const { encryptToken, decryptToken } = require('../utils/encryption');
 
 function getDb(customDb) {
   return customDb || dbModule.getDatabase();
@@ -83,16 +84,15 @@ function toPublicSharedPlan(planRow) {
 }
 
 /**
- * Creates or retrieves the active share for a plan owned by an authenticated user.
- * Idempotent: If an active share already exists, returns the existing share metadata
- * without creating duplicate tokens or proliferating active links.
+ * Retrieves the current share status for a plan owned by an authenticated user.
+ * Does NOT generate a new share if none exists.
  * 
  * @param {string} planId - UUID of the plan
  * @param {string} userId - UUID of the authenticated owner
  * @param {object} [db] - Optional Database instance
- * @returns {object|null} { share, isExisting } or null if plan not found / unauthorized
+ * @returns {object|null} { isActive: boolean, share?: object } or null if unauthorized/not found
  */
-function createOrGetActiveShare(planId, userId, db = null) {
+function getActiveShareStatus(planId, userId, db = null) {
   if (!planId || typeof planId !== 'string' || !planId.trim()) {
     return null;
   }
@@ -107,42 +107,194 @@ function createOrGetActiveShare(planId, userId, db = null) {
   // 1. Verify plan exists and is owned by the authenticated requester
   const plan = dbInstance.prepare('SELECT id, user_id FROM plans WHERE id = ?').get(trimmedPlanId);
   if (!plan || plan.user_id !== trimmedUserId) {
+    return null; // Safe 404
+  }
+
+  // 2. Query for active share
+  const activeShare = dbInstance.prepare(`
+    SELECT id, plan_id, user_id, share_token, encrypted_token, is_active, view_count, created_at, revoked_at
+    FROM plan_shares
+    WHERE plan_id = ? AND is_active = 1 AND revoked_at IS NULL
+    LIMIT 1
+  `).get(trimmedPlanId);
+
+  if (!activeShare) {
+    return {
+      isActive: false
+    };
+  }
+
+  // 3. Attempt decryption if encrypted_token is present
+  let decryptedToken = null;
+  let requiresReplacement = false;
+
+  if (activeShare.encrypted_token) {
+    decryptedToken = decryptToken(activeShare.encrypted_token);
+    if (!decryptedToken) {
+      requiresReplacement = true;
+    }
+  } else {
+    requiresReplacement = true;
+  }
+
+  const shareData = {
+    id: activeShare.id,
+    planId: activeShare.plan_id,
+    isActive: true,
+    createdAt: activeShare.created_at,
+    viewCount: activeShare.view_count,
+    alreadyExists: true,
+    requiresReplacement
+  };
+
+  if (decryptedToken) {
+    shareData.token = decryptedToken;
+    shareData.url = `/share/${decryptedToken}`;
+  }
+
+  return {
+    isActive: true,
+    share: shareData
+  };
+}
+
+/**
+ * Creates or retrieves the active share for a plan owned by an authenticated user.
+ * Supports:
+ * - Encrypted token recovery for existing active shares
+ * - Explicit atomic replacement via options.replace = true
+ * - Identification of legacy Phase 5.3 unrecoverable shares requiring replacement
+ * 
+ * @param {string} planId - UUID of the plan
+ * @param {string} userId - UUID of the authenticated owner
+ * @param {object|Database} [optionsOrDb] - Options object { replace: boolean } or Database instance
+ * @param {object} [customDb] - Optional Database instance when options object is provided
+ * @returns {object|null} { share, isExisting } or null if plan not found / unauthorized
+ */
+function createOrGetActiveShare(planId, userId, optionsOrDb = {}, customDb = null) {
+  if (!planId || typeof planId !== 'string' || !planId.trim()) {
+    return null;
+  }
+  if (!userId || typeof userId !== 'string' || !userId.trim()) {
+    return null;
+  }
+
+  let opts = {};
+  let dbInstance = null;
+  if (optionsOrDb && typeof optionsOrDb === 'object' && typeof optionsOrDb.prepare === 'function') {
+    dbInstance = optionsOrDb;
+  } else if (optionsOrDb && typeof optionsOrDb === 'object') {
+    opts = optionsOrDb;
+    dbInstance = getDb(customDb);
+  } else {
+    dbInstance = getDb(customDb);
+  }
+
+  const trimmedPlanId = planId.trim();
+  const trimmedUserId = userId.trim();
+
+  // 1. Verify plan exists and is owned by the authenticated requester
+  const plan = dbInstance.prepare('SELECT id, user_id FROM plans WHERE id = ?').get(trimmedPlanId);
+  if (!plan || plan.user_id !== trimmedUserId) {
     return null; // Safe 404: do not leak existence of another user's plan or unowned trial plan
   }
 
-  // 2. Check for an existing active, non-revoked share
+  // 2. Explicit link replacement requested
+  if (opts.replace) {
+    const executeReplacement = dbInstance.transaction(() => {
+      const now = new Date().toISOString();
+
+      // Revoke any existing active share(s) for this plan
+      dbInstance.prepare(`
+        UPDATE plan_shares
+        SET is_active = 0, revoked_at = ?
+        WHERE plan_id = ? AND is_active = 1
+      `).run(now, trimmedPlanId);
+
+      // Generate new cryptographically random token (256 bits)
+      const rawToken = generateShareToken();
+      const tokenHash = hashShareToken(rawToken);
+      const encryptedToken = encryptToken(rawToken);
+      const shareId = crypto.randomUUID();
+
+      dbInstance.prepare(`
+        INSERT INTO plan_shares (
+          id, plan_id, user_id, share_token, encrypted_token, is_active, view_count, created_at, revoked_at
+        ) VALUES (?, ?, ?, ?, ?, 1, 0, ?, NULL)
+      `).run(shareId, trimmedPlanId, trimmedUserId, tokenHash, encryptedToken, now);
+
+      return {
+        share: {
+          id: shareId,
+          planId: trimmedPlanId,
+          token: rawToken,
+          url: `/share/${rawToken}`,
+          isActive: true,
+          createdAt: now,
+          viewCount: 0,
+          replaced: true
+        },
+        isExisting: false
+      };
+    });
+
+    return executeReplacement();
+  }
+
+  // 3. Check for an existing active, non-revoked share
   const existingShare = dbInstance.prepare(`
-    SELECT id, plan_id, user_id, is_active, view_count, created_at, revoked_at
+    SELECT id, plan_id, user_id, share_token, encrypted_token, is_active, view_count, created_at, revoked_at
     FROM plan_shares
     WHERE plan_id = ? AND is_active = 1 AND revoked_at IS NULL
     LIMIT 1
   `).get(trimmedPlanId);
 
   if (existingShare) {
+    let decryptedToken = null;
+    let requiresReplacement = false;
+
+    if (existingShare.encrypted_token) {
+      decryptedToken = decryptToken(existingShare.encrypted_token);
+      if (!decryptedToken) {
+        requiresReplacement = true;
+      }
+    } else {
+      requiresReplacement = true;
+    }
+
+    const shareData = {
+      id: existingShare.id,
+      planId: existingShare.plan_id,
+      isActive: Boolean(existingShare.is_active),
+      createdAt: existingShare.created_at,
+      viewCount: existingShare.view_count,
+      alreadyExists: true,
+      requiresReplacement
+    };
+
+    if (decryptedToken) {
+      shareData.token = decryptedToken;
+      shareData.url = `/share/${decryptedToken}`;
+    }
+
     return {
-      share: {
-        id: existingShare.id,
-        planId: existingShare.plan_id,
-        isActive: Boolean(existingShare.is_active),
-        createdAt: existingShare.created_at,
-        viewCount: existingShare.view_count,
-        alreadyExists: true
-      },
+      share: shareData,
       isExisting: true
     };
   }
 
-  // 3. Generate a new high-entropy token and persist its SHA-256 hash
+  // 4. Generate a new high-entropy token and persist SHA-256 hash + encrypted token
   const rawToken = generateShareToken();
   const tokenHash = hashShareToken(rawToken);
+  const encryptedToken = encryptToken(rawToken);
   const shareId = crypto.randomUUID();
   const now = new Date().toISOString();
 
   dbInstance.prepare(`
     INSERT INTO plan_shares (
-      id, plan_id, user_id, share_token, is_active, view_count, created_at, revoked_at
-    ) VALUES (?, ?, ?, ?, 1, 0, ?, NULL)
-  `).run(shareId, trimmedPlanId, trimmedUserId, tokenHash, now);
+      id, plan_id, user_id, share_token, encrypted_token, is_active, view_count, created_at, revoked_at
+    ) VALUES (?, ?, ?, ?, ?, 1, 0, ?, NULL)
+  `).run(shareId, trimmedPlanId, trimmedUserId, tokenHash, encryptedToken, now);
 
   return {
     share: {
@@ -261,6 +413,7 @@ module.exports = {
   hashShareToken,
   toPublicSharedPlan,
   createOrGetActiveShare,
+  getActiveShareStatus,
   revokeActiveShare,
   getSharedPlanByToken
 };

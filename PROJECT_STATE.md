@@ -68,10 +68,10 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 5 — Pitch Deck Export & Sharing
-- **Current Chunk**: Chunk 5.4 — Public Shareable Presentation Page & Viral Growth UX
+- **Current Chunk**: Chunk 5.5 — Dashboard & Pitch Preview Share Management UX
 - **Status**: Completed
-- **Phase 5 Status**: IN PROGRESS (Chunks 5.1, 5.2, 5.3 & 5.4 Completed)
-- **Next Planned Chunk**: Chunk 5.5 — Dashboard & Pitch Preview Share Management UX
+- **Phase 5 Status**: COMPLETED (Chunks 5.1, 5.2, 5.3, 5.4 & 5.5 Completed)
+- **Next Planned Chunk**: Phase 6 — Production Hardening, Test Suite Modernization & CI/CD
 
 ---
 
@@ -305,12 +305,12 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 4.2: Database Migration 002, User Model & Core Backend Auth Endpoints (Completed)
   - Chunk 4.3: Plan Ownership, Multi-User Isolation & Plan Claiming API (Completed)
   - Chunk 4.4: Frontend Auth UX, Google Sign-In & Dashboard Claim Flow (Completed - `9439267`)
-- **Phase 5: Pitch Deck Export & Sharing (IN PROGRESS)**
+- **Phase 5: Pitch Deck Export & Sharing (COMPLETED - Commit pending)**
   - Chunk 5.1: Export & Sharing Architecture Audit (Completed - `6f07fa3`)
   - Chunk 5.2: Pitch Deck & Business Plan PDF Export Engine (Completed - `af6e47b`)
   - Chunk 5.3: Plan Sharing Database Foundation & Backend API (Completed - `15aa3ed`)
-  - Chunk 5.4: Public Shareable Presentation Page & Viral Growth UX (COMPLETED)
-  - Chunk 5.5: Dashboard & Pitch Preview Share Management UX (PENDING)
+  - Chunk 5.4: Public Shareable Presentation Page & Viral Growth UX (Completed - `0cadc42`)
+  - Chunk 5.5: Dashboard & Pitch Preview Share Management UX (COMPLETED)
 - **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
 
 ---
@@ -318,12 +318,12 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `15aa3ed` (feat: add secure plan sharing backend)
+- **Pre-Chunk Commit**: `0cadc42` (feat: add public shared plan presentation page)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
 - **Phase 4 Status**: COMPLETED
-- **Phase 5 Status**: IN PROGRESS (Chunks 5.1, 5.2, 5.3 & 5.4 Completed)
+- **Phase 5 Status**: COMPLETED (Chunks 5.1, 5.2, 5.3, 5.4 & 5.5 Completed)
 
 ---
 
@@ -331,10 +331,12 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 | Verification Check | Result | Details |
 |---|---|---|
+| **Phase 5.5 Share Recovery & Management Suite (12 tests)** | PASS | `backend/tests/planShareRecovery.test.js`: 12 comprehensive tests covering: 1) new share creation persists hash and AES-256-GCM ciphertext without plaintext fallback, 2) reopening sharing recovers existing URL identically, 3) non-mutating status query, 4) AES-256-GCM authenticated encryption/decryption, 5) wrong key/corrupted tag safe failure, 6) legacy share requires replacement while keeping old link active, 7) atomic replacement invalidates old URL and generates fresh active link, 8) revocation and subsequent link creation, 9) anonymous/non-owner isolation (401/404), 10) missing encryption key throws without plaintext fallback, 11) HTTP controller contracts (GET, POST, DELETE), and 12) public DTO strict exclusion of encryption/owner fields. |
+| **Phase 5.5 ShareModal Frontend Suite (11 tests)** | PASS | `frontend/src/components/ShareModal.test.js`: 11 tests verifying requirements 14–24: authenticated owner modal open, anonymous trial sign-in prompt, share creation displaying URL, copy link success with clipboard and fallback, existing active URL recovery without duplicate creation, legacy link requiring explicit replacement confirmation, revocation confirmation dialog and server confirmation, network error retry CTA, plan switching state reset, and ExportTab PDF export functionality preservation. |
+| **Backend Test Suite (17 suites)** | PASS | `npm test` in `backend` runs all 17 test suites cleanly with 0 errors across 190+ assertions, including both `tests/planSharing.test.js` and `tests/planShareRecovery.test.js`. |
+| **Frontend Test Suite (11 suites, 71 tests)** | PASS | `CI=true npm test` runs all 11 suites cleanly (71/71 tests pass) with 0 regressions. |
+| **Frontend Production Build** | PASS | `npm run build` compiles with 0 errors (`main.8be09ce0.js`). Zero ESLint warnings in `ShareModal.js`. |
 | **Public Share Page Frontend Suite (14 tests)** | PASS | `src/pages/SharedPlanPage.test.js` tests all 14 requirements: valid token rendering, unauthenticated access, skeleton loading state, invalid token uniform message, revoked token uniform message, network error with retry, retry button trigger, missing module resilience, owner/session/error data exclusion, absence of owner/edit controls, long text and empty collection handling, custom router integration, dynamic robots noindex meta injection & cleanup, and zero token leakage to web storage. |
-| **Frontend Test Suite (10 suites, 60 tests)** | PASS | `CI=true npm test` runs all 10 suites cleanly (60/60 tests pass), with 0 regressions. |
-| **Frontend Production Build** | PASS | `npm run build` compiles with 0 errors (`main.4b69d60e.js`). Zero ESLint warnings in `SharedPlanPage.js`. |
-| **Backend Test Suite (16 suites)** | PASS | `npm test` in `backend` runs all 16 test suites cleanly with 0 errors across 180+ assertions, including `tests/planSharing.test.js`. |
 | **Backend Syntax** | PASS | Checked with `node -c index.js controllers/*.js models/*.js routes/*.js services/*.js utils/*.js db/*.js middleware/*.js tests/*.js` with 0 errors. |
 | **Plan Sharing Backend Suite (10 categories)** | PASS | `backend/tests/planSharing.test.js`: 10 comprehensive categories (A–J) verifying Migration 003, authenticated share creation, idempotent shares, revocation, dynamic public retrieval, strict DTO sanitization, atomic SQL view counting, multi-user isolation, anonymous trial boundaries, and token privacy. |
 | **Live HTTP & API Verification (12 points)** | PASS | Verified against Express server instance: 1) Authenticated owner creates share (201), 2) Idempotent repeat create returns existing active share (200), 3) Anonymous user rejected (401), 4) Non-owner returns safe 404, 5) Valid public token returns strictly sanitized plan (200), 6) Invalid token returns safe 404, 7) Owner revokes share (200), 8) Revoked token returns safe 404, 9) Plan deletion cascades and purges shares, 10) Unclaimed trial plan returns 404, 11) Claimed trial plan shared and retrieved successfully (201/200), and 12) Atomic view count incremented accurately. |
