@@ -36,6 +36,12 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Health and readiness probes (lightweight, unauthenticated)
+const healthRoutes = require('./routes/health');
+app.use(healthRoutes);
+app.use('/api', healthRoutes);
+
 const { authenticateUser } = require('./middleware/auth');
 app.use(authenticateUser);
 
@@ -60,11 +66,14 @@ app.use('/api/plans', planRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/shared', sharedRoutes);
 
+const { registerShutdownHandlers } = require('./utils/shutdown');
+
 const PORT = process.env.PORT || 4000;
 if (require.main === module) {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Backend server running on port ${PORT}`);
   });
+  registerShutdownHandlers(server);
 }
 
 module.exports = app;

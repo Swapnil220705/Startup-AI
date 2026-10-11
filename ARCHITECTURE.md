@@ -1537,6 +1537,67 @@ Integrated into `ExportTab` within `frontend/src/components/DashboardTabs.js`:
 - Preserves existing Business Plan PDF export, Pitch Deck navigation, and Share Link modal management completely untouched.
 - Introduces an explicit, genuinely unsupported 4th export card ("Cap Table & Equity") marked with a "Coming Soon" badge and disabled button to preserve user roadmap visibility.
 
+---
 
+## 16. Production Operations, Health Monitoring & Deployment Architecture (Chunk 6.1)
 
+### 16.1 Process Lifecycle & Graceful Shutdown (`backend/utils/shutdown.js`)
 
+To prevent dropped requests and corrupted database transactions during deployments and container restarts:
+- **Signal Interception**: Registers listeners for `SIGTERM` (container stop signal) and `SIGINT` (Ctrl+C).
+- **Two-Phase Connection Draining**:
+  1. `server.close()` stops accepting new TCP connections and allows active in-flight requests to complete.
+  2. The SQLite database connection is closed cleanly via `closeDatabase()` only *after* all active HTTP requests have finished.
+- **Deduplication**: Sets an internal `shuttingDown` flag to ignore repeated signals and avoid duplicate shutdown sequences.
+- **Bounded Force-Termination Fallback**: Uses an unref'd 10-second timer to forcefully terminate the process (`exitCode: 1`) if hung requests fail to drain within the window.
+
+### 16.2 Health & Readiness Probes (`backend/controllers/healthController.js`)
+
+Provides separated liveness and readiness endpoints mounted at both root and `/api`:
+- **Liveness Probe (`GET /health` & `GET /api/health`)**:
+  - Returns HTTP 200 with `{ status: 'ok', timestamp: '<ISO>', uptime: <seconds> }`.
+  - Lightweight process check; does not query SQLite or trigger external network calls.
+- **Readiness Probe (`GET /ready` & `GET /api/ready`)**:
+  - Validates SQLite connection state and performs a lightweight probe query (`SELECT 1 AS healthy`).
+  - Returns HTTP 200 with `{ status: 'ready', timestamp: '<ISO>', database: 'connected' }` when ready.
+  - Returns HTTP 503 Service Unavailable if SQLite is disconnected, uninitialized, or query fails.
+  - Returns HTTP 503 with `{ status: 'not_ready', database: 'shutting_down' }` during graceful shutdown, signalling load balancers to immediately remove the terminating instance from active target pools.
+  - Zero information leakage: never exposes database paths, connection strings, stack traces, or secrets.
+
+### 16.3 Single-Page Application (SPA) Deep-Link Fallback
+
+The client-side router (`frontend/src/utils/Router.js`) uses HTML5 History API (`pushState`). To prevent HTTP 404 errors when users refresh or directly load deep routes (e.g. `/dashboard`, `/my-plans`, `/share/:token`):
+- **Static Hosting (Netlify, Cloudflare Pages, Render Static)**:
+  `frontend/public/_redirects` contains:
+  ```text
+  /*    /index.html   200
+  ```
+  Automatically copied into `build/_redirects` during `npm run build`.
+- **Nginx Reverse Proxy / Static Host**:
+  Requires the following block in the server configuration:
+  ```nginx
+  location / {
+      try_files $uri $uri/ /index.html;
+  }
+  location /api/ {
+      proxy_pass http://localhost:4000;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+  }
+  ```
+- **Apache**:
+  Requires mod_rewrite enabled:
+  ```apache
+  RewriteEngine On
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.html [QSA,L]
+  ```
+
+### 16.4 Environment Variables & Secrets Separation
+
+- **Backend Secrets (`backend/.env`)**: `GEMINI_API_KEY`, `SHARE_ENCRYPTION_KEY` (never committed; excluded via `.gitignore`).
+- **Backend Configuration**: `PORT`, `NODE_ENV`, `FRONTEND_ORIGIN`, `DATABASE_PATH`, `GOOGLE_CLIENT_ID`.
+- **Frontend Configuration (`frontend/.env.example`)**: `REACT_APP_API_BASE_URL`, `REACT_APP_GOOGLE_CLIENT_ID` (safe public parameters embedded into the static bundle).

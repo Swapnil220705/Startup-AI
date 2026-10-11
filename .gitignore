@@ -4,6 +4,7 @@
 /frontend/pnp.js
 /frontend/coverage
 /frontend/build
+/frontend/.env
 /frontend/.env.local
 /frontend/.env.development.local
 /frontend/.env.test.local
@@ -16,7 +17,8 @@
 /backend/node_modules
 /backend/.env
 /backend/*.log
-backend/keys/gemini-service-account.json
+backend/keys/*
+!backend/keys/.gitkeep
 
 # === Database ===
 *.db

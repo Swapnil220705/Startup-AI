@@ -68,10 +68,10 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 6 — Production Readiness, Deployment & Hardening
-- **Current Chunk**: Chunk 6.0 — Production Readiness & Deployment Audit
-- **Status**: Completed (Audit Only)
+- **Current Chunk**: Chunk 6.1 — Production Environment, Scripts & Health Check Hardening
+- **Status**: Completed
 - **Phase 5 Status**: COMPLETED
-- **Next Planned Chunk**: Chunk 6.1 — Production Environment, Scripts & Health Check Hardening
+- **Next Planned Chunk**: Chunk 6.2 — Security Hardening & Rate Limiting
 
 ---
 
@@ -342,16 +342,53 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ---
 
+## 7.14 Completed in Current Chunk (Chunk 6.1) — Production Environment, Scripts & Health Check Hardening
+
+- [x] **Backend Production Startup Script (`backend/package.json`)**:
+  - Added `"start": "node index.js"` script to `backend/package.json`.
+  - Verified `npm start --prefix backend` boots the server cleanly on port 4000, connects to SQLite, and runs pending migrations without process failure.
+- [x] **Health & Readiness Monitoring Endpoints (`backend/controllers/healthController.js` & `backend/routes/health.js`)**:
+  - **Liveness Probe (`GET /health` & `GET /api/health`)**:
+    - Returns HTTP 200 OK with `{ status: 'ok', timestamp: '<ISO>', uptime: <seconds> }`.
+    - Lightweight, unauthenticated, zero DB query, zero external network calls.
+  - **Readiness Probe (`GET /ready` & `GET /api/ready`)**:
+    - Verifies active database connection and executes a lightweight probe query (`SELECT 1 AS healthy`).
+    - Returns HTTP 200 OK with `{ status: 'ready', timestamp: '<ISO>', database: 'connected' }` when operational.
+    - Returns HTTP 503 Service Unavailable with `{ status: 'not_ready', database: 'disconnected' }` if SQLite connection is closed or query fails.
+    - Returns HTTP 503 Service Unavailable with `{ status: 'not_ready', database: 'shutting_down' }` during graceful shutdown, informing load balancers to remove the instance from active pools.
+    - Information hygiene strictly enforced: zero database filepaths, connection strings, error stack traces, or secrets leaked.
+  - Mounted before user authentication middleware to eliminate unnecessary session parsing on probe checks.
+- [x] **Graceful Shutdown Lifecycle (`backend/utils/shutdown.js`)**:
+  - Listens for `SIGTERM` and `SIGINT` process termination signals.
+  - **Drain Phase**: Calls `server.close()` to stop accepting new HTTP connections and allow in-flight requests to complete.
+  - **Database Cleanup Phase**: Closes SQLite connection cleanly via `closeDatabase()` only after server drainage callback fires.
+  - **Deduplication**: Sets an internal `shuttingDown` flag to ignore repeated signals and avoid duplicate shutdown sequences.
+  - **Bounded Force-Termination Fallback**: Uses an unref'd 10-second timer to forcefully terminate the process (`exitCode: 1`) if hung requests fail to drain within the window.
+  - Wired into `if (require.main === module)` in `backend/index.js`.
+- [x] **Frontend Environment Configuration & Secret Protection**:
+  - Created `frontend/.env.example` documenting public configuration variables (`REACT_APP_API_BASE_URL`, `REACT_APP_GOOGLE_CLIENT_ID`) with safe placeholders and explanatory comments.
+  - Updated root `.gitignore` to explicitly ignore `/frontend/.env` (without ignoring `/frontend/.env.example`).
+  - Hardened `.gitignore` rule for `backend/keys/*` to ensure any future credentials or certificates are automatically excluded from Git.
+- [x] **SPA Deep-Link Routing Fallback (`frontend/public/_redirects`)**:
+  - Created `frontend/public/_redirects` containing `/*    /index.html   200`.
+  - Verified file is copied into `frontend/build/_redirects` on `npm run build`, guaranteeing that direct navigation or browser refresh on deep routes (`/dashboard`, `/my-plans`, `/share/:token`) returns `index.html` with HTTP 200 on Netlify, Cloudflare Pages, and Render Static.
+  - Documented equivalent Nginx (`try_files $uri $uri/ /index.html;`) and Apache fallback rules in `ARCHITECTURE.md`.
+- [x] **Comprehensive Test Verification**:
+  - Created `backend/tests/healthEndpoints.test.js`: 7 deterministic tests verifying liveness (200), readiness (200), readiness failure on closed/faulty DB (503), readiness failure during shutdown (503), graceful shutdown drain order, real HTTP request contracts, and zero information leakage.
+  - Full backend test suite passing cleanly (19/19 test suites).
+  - Full frontend test suite passing cleanly (12/12 suites, 93/93 tests).
+  - Frontend production build compiling cleanly with zero errors.
+
+---
+
 ## 8. Next Planned Phase & Chunk
 
 **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
-- **Chunk 6.1 — Production Environment, Scripts & Health Check Hardening**:
-  - Add `"start": "node index.js"` in `backend/package.json`.
-  - Add `/health` liveness probe endpoint in `backend/index.js` with database connectivity check.
-  - Add graceful process shutdown (`SIGTERM`/`SIGINT`) closing SQLite connections cleanly.
-  - Create `frontend/.env.example` documenting `REACT_APP_API_BASE_URL` and `REACT_APP_GOOGLE_CLIENT_ID`.
-  - Add SPA fallback rewrite (`frontend/public/_redirects`) for single-page routing refresh safety.
-  - Update `.gitignore` to prevent committing `/frontend/.env` and any files in `backend/keys/`.
+- **Chunk 6.2 — Security Hardening & Rate Limiting**:
+  - Install and configure `helmet` in Express for standard HTTP security headers (`CSP`, `nosniff`, `X-Frame-Options`, `HSTS`).
+  - Install `express-rate-limit` and configure IP rate limiters for auth endpoints (`/api/auth/login`, `/api/auth/signup`) and AI generation endpoints (`/api/lean-canvas`, `/api/mvp`, etc.).
+  - Switch `geminiClient.js` from URL query parameter (`?key=...`) to `x-goog-api-key` header.
+  - Debounce/throttle view count updates on `GET /api/shared/:token`.
 
 ---
 
@@ -390,8 +427,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 5.6B: Financial Model XLSX Export Engine & UI Integration (Completed - `eb40b2c`)
   - Corrective Chunk 5.6B.1: Financial Formula Semantics and Bundle Optimization (Completed - `f4bc1f4`)
 - **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
-  - Chunk 6.0: Production Readiness & Deployment Audit (Completed - Audit Only)
-  - Chunk 6.1: Production Environment, Scripts & Health Check Hardening (Planned)
+  - Chunk 6.0: Production Readiness & Deployment Audit (Completed - `d7c15be`)
+  - Chunk 6.1: Production Environment, Scripts & Health Check Hardening (Completed)
   - Chunk 6.2: Security Hardening & Rate Limiting (Planned)
   - Chunk 6.3: Pre-Flight Trial Check & AI Quota Protection (Planned)
   - Chunk 6.4: CI/CD Pipeline & Dependency Cleanup (Planned)
@@ -401,13 +438,13 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `f4bc1f4` (fix: clarify financial model formulas and loading)
+- **Pre-Chunk Commit**: `d7c15be` (docs: audit production readiness)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
 - **Phase 4 Status**: COMPLETED
 - **Phase 5 Status**: COMPLETED
-- **Phase 6 Status**: IN PROGRESS (Chunk 6.0 Audit Completed)
+- **Phase 6 Status**: IN PROGRESS (Chunk 6.1 Completed)
 
 ---
 
@@ -415,7 +452,13 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 | Verification Check | Result | Details |
 |---|---|---|
-| **Phase 6.0 Backend Test Suite (18 suites)** | PASS | `npm test` in `backend` runs all 18 test suites cleanly with 0 failures across 200+ assertions (controllers, data flow, MVP storage, routes, E2E generation, JSON parser, Gemini client, partial generation, persistence, frontend persistence integration, plan history, reopen plan, plan lifecycle, auth endpoints, plan authorization, plan sharing, share recovery, share concurrency). |
+| **Health & Shutdown Suite (7 tests)** | PASS | `backend/tests/healthEndpoints.test.js`: 7 tests verifying: 1) Liveness probe unit contract (`GET /health`), 2) Readiness probe unit contract with active database (`GET /ready`), 3) Readiness probe returns 503 during graceful shutdown (`status: 'not_ready', database: 'shutting_down'`), 4) Readiness probe returns 503 when database is closed or faulty, 5) Graceful shutdown execution order (`server.close` before `closeDatabase`) and signal deduplication, 6) Real HTTP request testing across `/health`, `/ready`, `/api/health`, `/api/ready` with 200 OK responses, and 7) Information leakage inspection verifying zero secret, path, or query leakage. |
+| **Backend Test Suite (19 suites)** | PASS | `npm test` in `backend` runs all 19 test suites cleanly with 0 errors across 210+ assertions (including `healthEndpoints.test.js`, controllers, data flow, MVP storage, routes, E2E generation, JSON parser, Gemini client, partial generation, persistence, frontend persistence integration, plan history, reopen plan, plan lifecycle, auth endpoints, plan authorization, plan sharing, share recovery, share concurrency). |
+| **Production Start Script Verification** | PASS | `npm start --prefix backend` boots the server cleanly using `node index.js`, logs database connection and migration status, and responds immediately to live HTTP health probes on port 4000. |
+| **SPA Deep-Link Fallback Build Output** | PASS | `npm run build` copies `frontend/public/_redirects` to `frontend/build/_redirects` (`/* /index.html 200`) for static host deep-link routing refresh safety. |
+| **Full Frontend Test Suite (12 suites, 93 tests)** | PASS | `npm test -- --watchAll=false src` runs all 12 frontend test suites cleanly (93/93 tests pass) with 0 regressions. |
+| **Frontend Production Build** | PASS | `npm run build` compiles with 0 errors (`main.06c15f3b.js` at 124.18 kB gzipped, on-demand Excel chunk at 256.73 kB gzipped). |
+| **Phase 6.0 Backend Test Suite (18 suites)** | PASS | `npm test` in `backend` runs all 18 test suites cleanly with 0 failures across 200+ assertions. |
 | **Phase 6.0 Frontend Test Suite (12 suites, 93 tests)** | PASS | `npm test -- --watchAll=false src` runs all 12 frontend test suites cleanly (93/93 tests pass) with 0 regressions across auth, share modal, export views, financial helpers, history, dashboard, API client, and shared plan page. |
 | **Phase 6.0 Frontend Production Build & Code Splitting** | PASS | `npm run build` compiled cleanly. Initial bundle optimized at 124.18 kB gzipped. Asynchronous `exceljs` chunk code-split to 256.73 kB gzipped (`223.1018c41a.chunk.js`). |
 | **Production Readiness & Deployment Audit Complete** | PASS | Full codebase audit completed covering Security/Auth, Database/Persistence, AI Reliability, Frontend/Exports, and Deployment/Operations. Executive verdict: Ready After Fixes. Remediation roadmap established. |

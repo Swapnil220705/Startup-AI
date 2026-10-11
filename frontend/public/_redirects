@@ -1,0 +1,4 @@
+# SPA deep-link routing fallback rule
+# Ensures requests to client-side routes (e.g. /dashboard, /my-plans, /share/:token)
+# return index.html with HTTP 200 rather than 404 on static hosts (Netlify, Cloudflare Pages, Render Static)
+/*    /index.html   200
