@@ -26,14 +26,15 @@ import { normalizePlanData } from './exportHelpers.js';
  * Prominently documented as illustrative examples for founder scenario modeling.
  */
 export const DEFAULT_FINANCIAL_ASSUMPTIONS = {
-  arpu: 49.00,                      // Average monthly revenue per paying customer ($)
-  startingCustomers: 10,            // Starting paying customers in Month 1
-  monthlyGrowthRate: 0.15,          // Month-over-month compound customer acquisition growth (15%)
-  baseInfrastructureCost: 100.00,   // Base monthly infrastructure / hosting baseline ($)
-  variableCostPerCustomer: 1.50,    // Variable infrastructure / compute cost per customer ($)
-  processingFeeRate: 0.029,         // Payment processing variable percentage (2.9%)
-  processingFixedFee: 0.30,         // Payment processing fixed fee per transaction ($0.30)
-  otherOperatingExpenses: 500.00    // Other baseline operating expenses ($/month)
+  arpu: 49.00,                          // Average monthly revenue per paying customer ($)
+  startingCustomers: 10,                // Starting paying customers in Month 1
+  monthlyGrowthRate: 0.15,              // Month-over-month compound customer acquisition growth (15%)
+  baseInfrastructureCost: 100.00,       // Base monthly infrastructure / hosting baseline ($)
+  variableCostPerCustomer: 1.50,        // Variable infrastructure / compute cost per customer ($)
+  monthlyTransactionsPerCustomer: 1,    // Monthly billing transactions per paying customer (illustrative starter default: 1 txn/user/mo)
+  processingFeeRate: 0.029,             // Payment processing variable percentage (2.9%)
+  processingFixedFee: 0.30,             // Payment processing fixed fee per transaction ($0.30)
+  otherOperatingExpenses: 500.00        // Other baseline operating expenses ($/month)
 };
 
 /**
@@ -289,7 +290,7 @@ function buildOverviewAndAssumptionsSheet(workbook, planData, assumptions) {
     cell.alignment = { vertical: 'middle', horizontal: 'left' };
   });
 
-  // Exactly rows 20 to 27 in Column B:
+  // Exactly rows 20 to 28 in Column B:
   // Row 20: ARPU
   const r20 = ws.addRow([
     'Average Revenue per Customer (ARPU)',
@@ -335,34 +336,43 @@ function buildOverviewAndAssumptionsSheet(workbook, planData, assumptions) {
   ]);
   r24.getCell(2).numFmt = '$#,##0.00';
 
-  // Row 25: Processing Fee Rate
+  // Row 25: Monthly Transactions per Paying Customer
   const r25 = ws.addRow([
+    'Monthly Transactions per Paying Customer',
+    assumptions.monthlyTransactionsPerCustomer ?? 1,
+    'Count (txns/customer/mo)',
+    'Illustrative starter assumption: average billing transactions per active customer per month (e.g. 1 subscription payment/month). Edit to model higher-frequency transactions.'
+  ]);
+  r25.getCell(2).numFmt = '#,##0';
+
+  // Row 26: Processing Fee Rate
+  const r26 = ws.addRow([
     'Payment Processing Fee Rate',
     assumptions.processingFeeRate,
     'Percentage (%)',
     'Credit card processor interchange fee percentage (e.g., Stripe 2.9%).'
   ]);
-  r25.getCell(2).numFmt = '0.0%';
+  r26.getCell(2).numFmt = '0.0%';
 
-  // Row 26: Processing Fixed Fee
-  const r26 = ws.addRow([
+  // Row 27: Processing Fixed Fee
+  const r27 = ws.addRow([
     'Payment Processing Fixed Fee',
     assumptions.processingFixedFee,
     'Currency ($/transaction)',
     'Fixed payment gateway fee charged per monthly transaction (e.g., $0.30).'
   ]);
-  r26.getCell(2).numFmt = '$#,##0.00';
+  r27.getCell(2).numFmt = '$#,##0.00';
 
-  // Row 27: Other Operating Expenses
-  const r27 = ws.addRow([
+  // Row 28: Other Operating Expenses
+  const r28 = ws.addRow([
     'Other Monthly Operating Expenses',
     assumptions.otherOperatingExpenses,
     'Currency ($/month)',
     'SaaS tools, customer support software, and baseline operating overhead.'
   ]);
-  r27.getCell(2).numFmt = '$#,##0.00';
+  r28.getCell(2).numFmt = '$#,##0.00';
 
-  [r20, r21, r22, r23, r24, r25, r26, r27].forEach(row => {
+  [r20, r21, r22, r23, r24, r25, r26, r27, r28].forEach(row => {
     row.getCell(1).font = { ...STYLES.cellFont, bold: true };
     row.getCell(2).font = { ...STYLES.cellFont, bold: true };
     row.getCell(2).fill = STYLES.highlightFill; // Yellow highlight for editable inputs
@@ -478,15 +488,16 @@ function buildCostStructureSheet(workbook, planData) {
  * Builds Sheet 4: 12-Month Working Model
  * 
  * Uses application-authored formula templates referencing cells in
- * 'Executive Overview & Assumptions' (Row 20 to 27):
+ * 'Executive Overview & Assumptions' (Row 20 to 28):
  * - $B$20: ARPU ($49.00)
  * - $B$21: Starting Customers (10)
  * - $B$22: Monthly Growth Rate (15%)
  * - $B$23: Base Infra ($100.00)
  * - $B$24: Variable Infra ($1.50)
- * - $B$25: Processing Fee Rate (2.9%)
- * - $B$26: Processing Fixed Fee ($0.30)
- * - $B$27: Other Operating Expenses ($500.00)
+ * - $B$25: Monthly Transactions per Paying Customer (1)
+ * - $B$26: Processing Fee Rate (2.9%)
+ * - $B$27: Processing Fixed Fee ($0.30)
+ * - $B$28: Other Operating Expenses ($500.00)
  */
 function buildWorkingModelSheet(workbook, assumptions, overviewSheetName = 'Executive Overview & Assumptions') {
   const ws = workbook.addWorksheet('12-Month Working Model');
@@ -496,7 +507,7 @@ function buildWorkingModelSheet(workbook, assumptions, overviewSheetName = 'Exec
 
   ws.columns = [
     { width: 34 }, // A: Line Item / Metric
-    { width: 30 }, // B: Formula / Model Logic
+    { width: 34 }, // B: Formula / Model Logic
     { width: 14 }, // C: Month 1
     { width: 14 }, // D: Month 2
     { width: 14 }, // E: Month 3
@@ -509,7 +520,7 @@ function buildWorkingModelSheet(workbook, assumptions, overviewSheetName = 'Exec
     { width: 14 }, // L: Month 10
     { width: 14 }, // M: Month 11
     { width: 14 }, // N: Month 12
-    { width: 18 }  // O: Full Year Total
+    { width: 22 }  // O: Annual Summary
   ];
 
   // Header Title
@@ -518,11 +529,11 @@ function buildWorkingModelSheet(workbook, assumptions, overviewSheetName = 'Exec
   ws.addRow([]);
 
   // Table Column Headers (Row 4)
-  const headerValues = ['Line Item / Metric', 'Model Formula Logic'];
+  const headerValues = ['Line Item / Metric', 'Model Formula Logic & Guidance'];
   for (let m = 1; m <= 12; m++) {
     headerValues.push(`Month ${m}`);
   }
-  headerValues.push('Full Year Total');
+  headerValues.push('Annual Summary (12-Mo Total / Ending)');
 
   const tableHeaderRow = ws.addRow(headerValues);
   tableHeaderRow.eachCell(cell => {
@@ -538,23 +549,32 @@ function buildWorkingModelSheet(workbook, assumptions, overviewSheetName = 'Exec
   for (let m = 1; m < 12; m++) {
     sampleCust.push(Math.round(sampleCust[m - 1] * (1 + assumptions.monthlyGrowthRate)));
   }
+  const txnsPerCust = assumptions.monthlyTransactionsPerCustomer ?? 1;
+  const sampleTxns = sampleCust.map(c => Math.round(c * txnsPerCust));
   const sampleRev = sampleCust.map(c => Math.round(c * assumptions.arpu * 100) / 100);
   const sampleBase = Array(12).fill(assumptions.baseInfrastructureCost);
   const sampleVar = sampleCust.map(c => Math.round(c * assumptions.variableCostPerCustomer * 100) / 100);
-  const sampleProc = sampleRev.map((r, i) => Math.round((r * assumptions.processingFeeRate + sampleCust[i] * assumptions.processingFixedFee) * 100) / 100);
+  const sampleProc = sampleRev.map((r, i) => Math.round((r * assumptions.processingFeeRate + sampleTxns[i] * assumptions.processingFixedFee) * 100) / 100);
   const sampleDirect = sampleRev.map((_, i) => Math.round((sampleBase[i] + sampleVar[i] + sampleProc[i]) * 100) / 100);
   const sampleGP = sampleRev.map((r, i) => Math.round((r - sampleDirect[i]) * 100) / 100);
   const sampleMargin = sampleRev.map((r, i) => r > 0 ? sampleGP[i] / r : 0);
   const sampleOpex = Array(12).fill(assumptions.otherOperatingExpenses);
   const sampleOperatingResult = sampleGP.map((gp, i) => Math.round((gp - sampleOpex[i]) * 100) / 100);
 
-  // Row 5: Section Header — Customers
-  const s1 = ws.addRow(['CUSTOMER ACQUISITION & ACTIVE ACCOUNTS', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+  const sampleCumNet = [];
+  sampleOperatingResult.reduce((acc, val, i) => {
+    const sum = Math.round((acc + val) * 100) / 100;
+    sampleCumNet[i] = sum;
+    return sum;
+  }, 0);
+
+  // Row 5: Section Header — Customers & Transaction Volume
+  const s1 = ws.addRow(['CUSTOMER ACQUISITION & TRANSACTION VOLUME', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
   s1.font = STYLES.sectionTitleFont;
   s1.eachCell(c => { c.fill = STYLES.subHeaderFill; });
 
   // Row 6: Active Customers
-  const rowCust = ws.addRow(['Active Paying Customers', 'Prior Mo * (1 + Growth Rate)']);
+  const rowCust = ws.addRow(['Active Paying Customers (Month-End)', 'Prior Mo * (1 + Growth Rate) | Annual: Ending Count (Month 12)']);
   monthColLetters.forEach((col, idx) => {
     const cell = rowCust.getCell(idx + 3);
     cell.numFmt = '#,##0';
@@ -571,18 +591,32 @@ function buildWorkingModelSheet(workbook, assumptions, overviewSheetName = 'Exec
       };
     }
   });
-  // Full year cell (O6): Ending customer count
+  // Annual Summary cell (O6): Ending customer count (Month 12)
   const cellCustEnd = rowCust.getCell(15);
   cellCustEnd.numFmt = '#,##0';
   cellCustEnd.value = { formula: 'N6', result: sampleCust[11] };
 
-  // Row 7: Section Header — Revenue
+  // Row 7: Modeled Paid Transactions
+  const rowTxns = ws.addRow(['Modeled Paid Transactions', 'Active Customers * Txns/Customer | Annual: 12-Month Total']);
+  monthColLetters.forEach((col, idx) => {
+    const cell = rowTxns.getCell(idx + 3);
+    cell.numFmt = '#,##0';
+    cell.value = {
+      formula: `${col}6*${overviewRef}!$B$25`,
+      result: sampleTxns[idx]
+    };
+  });
+  const cellTxnsTotal = rowTxns.getCell(15);
+  cellTxnsTotal.numFmt = '#,##0';
+  cellTxnsTotal.value = { formula: 'SUM(C7:N7)', result: sampleTxns.reduce((a, b) => a + b, 0) };
+
+  // Row 8: Section Header — Revenue
   const s2 = ws.addRow(['REVENUE MODEL', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
   s2.font = STYLES.sectionTitleFont;
   s2.eachCell(c => { c.fill = STYLES.subHeaderFill; });
 
-  // Row 8: Gross Revenue
-  const rowRev = ws.addRow(['Monthly Gross Revenue', 'Active Customers * ARPU']);
+  // Row 9: Gross Revenue
+  const rowRev = ws.addRow(['Monthly Gross Revenue', 'Active Customers * ARPU | Annual: 12-Month Total']);
   monthColLetters.forEach((col, idx) => {
     const cell = rowRev.getCell(idx + 3);
     cell.numFmt = '$#,##0.00';
@@ -593,15 +627,15 @@ function buildWorkingModelSheet(workbook, assumptions, overviewSheetName = 'Exec
   });
   const cellRevTotal = rowRev.getCell(15);
   cellRevTotal.numFmt = '$#,##0.00';
-  cellRevTotal.value = { formula: 'SUM(C8:N8)', result: sampleRev.reduce((a, b) => a + b, 0) };
+  cellRevTotal.value = { formula: 'SUM(C9:N9)', result: sampleRev.reduce((a, b) => a + b, 0) };
 
-  // Row 9: Section Header — Direct Operating Costs
+  // Row 10: Section Header — Direct Operating Costs
   const s3 = ws.addRow(['DIRECT OPERATING COSTS (COGS & INFRASTRUCTURE)', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
   s3.font = STYLES.sectionTitleFont;
   s3.eachCell(c => { c.fill = STYLES.subHeaderFill; });
 
-  // Row 10: Base Infrastructure
-  const rowBase = ws.addRow(['Base Infrastructure & Cloud Hosting', 'Fixed Monthly Baseline']);
+  // Row 11: Base Infrastructure
+  const rowBase = ws.addRow(['Base Infrastructure & Cloud Hosting', 'Fixed Monthly Baseline | Annual: 12-Month Total']);
   monthColLetters.forEach((col, idx) => {
     const cell = rowBase.getCell(idx + 3);
     cell.numFmt = '$#,##0.00';
@@ -611,10 +645,10 @@ function buildWorkingModelSheet(workbook, assumptions, overviewSheetName = 'Exec
     };
   });
   rowBase.getCell(15).numFmt = '$#,##0.00';
-  rowBase.getCell(15).value = { formula: 'SUM(C10:N10)', result: sampleBase.reduce((a, b) => a + b, 0) };
+  rowBase.getCell(15).value = { formula: 'SUM(C11:N11)', result: sampleBase.reduce((a, b) => a + b, 0) };
 
-  // Row 11: Variable Infrastructure
-  const rowVar = ws.addRow(['Variable Infrastructure per User', 'Customers * Variable Rate']);
+  // Row 12: Variable Infrastructure
+  const rowVar = ws.addRow(['Variable Infrastructure per Customer', 'Customers * Variable Rate | Annual: 12-Month Total']);
   monthColLetters.forEach((col, idx) => {
     const cell = rowVar.getCell(idx + 3);
     cell.numFmt = '$#,##0.00';
@@ -624,96 +658,96 @@ function buildWorkingModelSheet(workbook, assumptions, overviewSheetName = 'Exec
     };
   });
   rowVar.getCell(15).numFmt = '$#,##0.00';
-  rowVar.getCell(15).value = { formula: 'SUM(C11:N11)', result: sampleVar.reduce((a, b) => a + b, 0) };
+  rowVar.getCell(15).value = { formula: 'SUM(C12:N12)', result: sampleVar.reduce((a, b) => a + b, 0) };
 
-  // Row 12: Payment Processing Fees
-  const rowProc = ws.addRow(['Payment Processing Fees', 'Rev * Rate + Txns * Fixed']);
+  // Row 13: Payment Processing Fees
+  const rowProc = ws.addRow(['Payment Processing Fees', '(Revenue * Rate) + (Txns * Fixed Fee) | Annual: 12-Month Total']);
   monthColLetters.forEach((col, idx) => {
     const cell = rowProc.getCell(idx + 3);
     cell.numFmt = '$#,##0.00';
     cell.value = {
-      formula: `${col}8*${overviewRef}!$B$25+${col}6*${overviewRef}!$B$26`,
+      formula: `(${col}9*${overviewRef}!$B$26)+(${col}7*${overviewRef}!$B$27)`,
       result: sampleProc[idx]
     };
   });
   rowProc.getCell(15).numFmt = '$#,##0.00';
-  rowProc.getCell(15).value = { formula: 'SUM(C12:N12)', result: sampleProc.reduce((a, b) => a + b, 0) };
+  rowProc.getCell(15).value = { formula: 'SUM(C13:N13)', result: sampleProc.reduce((a, b) => a + b, 0) };
 
-  // Row 13: Total Direct Costs
-  const rowDirect = ws.addRow(['Total Direct Operating Costs', 'SUM(Base + Variable + Processing)']);
+  // Row 14: Total Direct Costs
+  const rowDirect = ws.addRow(['Total Direct Operating Costs (COGS)', 'SUM(Base + Variable + Processing) | Annual: 12-Month Total']);
   monthColLetters.forEach((col, idx) => {
     const cell = rowDirect.getCell(idx + 3);
     cell.numFmt = '$#,##0.00';
     cell.font = { ...STYLES.cellFont, bold: true };
     cell.value = {
-      formula: `SUM(${col}10:${col}12)`,
+      formula: `SUM(${col}11:${col}13)`,
       result: sampleDirect[idx]
     };
   });
   const cellDirectTotal = rowDirect.getCell(15);
   cellDirectTotal.numFmt = '$#,##0.00';
   cellDirectTotal.font = { ...STYLES.cellFont, bold: true };
-  cellDirectTotal.value = { formula: 'SUM(C13:N13)', result: sampleDirect.reduce((a, b) => a + b, 0) };
+  cellDirectTotal.value = { formula: 'SUM(C14:N14)', result: sampleDirect.reduce((a, b) => a + b, 0) };
 
-  // Row 14: Section Header — Operating Results
+  // Row 15: Section Header — Operating Results
   const s4 = ws.addRow(['OPERATING RESULTS & MARGINS', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
   s4.font = STYLES.sectionTitleFont;
   s4.eachCell(c => { c.fill = STYLES.subHeaderFill; });
 
-  // Row 15: Gross Profit
-  const rowGP = ws.addRow(['Gross Profit', 'Revenue - Total Direct Costs']);
+  // Row 16: Gross Profit
+  const rowGP = ws.addRow(['Gross Profit', 'Revenue - Direct Costs | Annual: Annual Rev - Annual Direct']);
   monthColLetters.forEach((col, idx) => {
     const cell = rowGP.getCell(idx + 3);
     cell.numFmt = '$#,##0.00';
     cell.font = { ...STYLES.cellFont, bold: true };
     cell.value = {
-      formula: `${col}8-${col}13`,
+      formula: `${col}9-${col}14`,
       result: sampleGP[idx]
     };
   });
   const cellGPTotal = rowGP.getCell(15);
   cellGPTotal.numFmt = '$#,##0.00';
   cellGPTotal.font = { ...STYLES.cellFont, bold: true };
-  cellGPTotal.value = { formula: 'O8-O13', result: sampleGP.reduce((a, b) => a + b, 0) };
+  cellGPTotal.value = { formula: 'O9-O14', result: sampleGP.reduce((a, b) => a + b, 0) };
 
-  // Row 16: Gross Margin % (Guarded against division by zero via IF)
-  const rowMargin = ws.addRow(['Gross Margin Percentage', 'IF(Revenue > 0, GP / Revenue, 0)']);
+  // Row 17: Gross Margin % (Guarded against division by zero via IF)
+  const rowMargin = ws.addRow(['Gross Margin Percentage', 'IF(Revenue > 0, GP / Revenue, 0) | Annual: Annual GP / Annual Rev']);
   monthColLetters.forEach((col, idx) => {
     const cell = rowMargin.getCell(idx + 3);
     cell.numFmt = '0.0%';
     cell.value = {
-      formula: `IF(${col}8>0,${col}15/${col}8,0)`,
+      formula: `IF(${col}9>0,${col}16/${col}9,0)`,
       result: sampleMargin[idx]
     };
   });
   const cellMarginTotal = rowMargin.getCell(15);
   cellMarginTotal.numFmt = '0.0%';
   cellMarginTotal.value = {
-    formula: 'IF(O8>0,O15/O8,0)',
+    formula: 'IF(O9>0,O16/O9,0)',
     result: sampleRev.reduce((a, b) => a + b, 0) > 0 ? sampleGP.reduce((a, b) => a + b, 0) / sampleRev.reduce((a, b) => a + b, 0) : 0
   };
 
-  // Row 17: Other Operating Expenses
-  const rowOpex = ws.addRow(['Other Monthly Operating Expenses', 'Fixed Baseline Overhead']);
+  // Row 18: Other Operating Expenses
+  const rowOpex = ws.addRow(['Other Monthly Operating Expenses', 'Fixed Baseline Overhead | Annual: 12-Month Total']);
   monthColLetters.forEach((col, idx) => {
     const cell = rowOpex.getCell(idx + 3);
     cell.numFmt = '$#,##0.00';
     cell.value = {
-      formula: `${overviewRef}!$B$27`,
+      formula: `${overviewRef}!$B$28`,
       result: sampleOpex[idx]
     };
   });
   rowOpex.getCell(15).numFmt = '$#,##0.00';
-  rowOpex.getCell(15).value = { formula: 'SUM(C17:N17)', result: sampleOpex.reduce((a, b) => a + b, 0) };
+  rowOpex.getCell(15).value = { formula: 'SUM(C18:N18)', result: sampleOpex.reduce((a, b) => a + b, 0) };
 
-  // Row 18: Estimated Operating Result (EBITDA Proxy)
-  const rowEbitda = ws.addRow(['Estimated Operating Result (EBITDA Proxy)', 'Gross Profit - Operating Expenses']);
+  // Row 19: Net Operating Income (EBITDA Proxy)
+  const rowEbitda = ws.addRow(['Net Operating Income (EBITDA Proxy)', 'Gross Profit - Operating Expenses | Annual: 12-Month Total']);
   monthColLetters.forEach((col, idx) => {
     const cell = rowEbitda.getCell(idx + 3);
     cell.numFmt = '$#,##0.00';
     cell.font = { ...STYLES.cellFont, bold: true };
     cell.value = {
-      formula: `${col}15-${col}17`,
+      formula: `${col}16-${col}18`,
       result: sampleOperatingResult[idx]
     };
   });
@@ -721,23 +755,34 @@ function buildWorkingModelSheet(workbook, assumptions, overviewSheetName = 'Exec
   cellEbitdaTotal.numFmt = '$#,##0.00';
   cellEbitdaTotal.font = { ...STYLES.cellFont, bold: true };
   cellEbitdaTotal.border = STYLES.totalBorder;
-  cellEbitdaTotal.value = { formula: 'O15-O17', result: sampleOperatingResult.reduce((a, b) => a + b, 0) };
+  cellEbitdaTotal.value = { formula: 'O16-O18', result: sampleOperatingResult.reduce((a, b) => a + b, 0) };
 
-  // Row 19: Cumulative Modeled Revenue
-  const rowCum = ws.addRow(['Cumulative Modeled Revenue', 'Running Sum of Monthly Revenue']);
+  // Row 20: Cumulative Net Operating Income (Running total through each month)
+  const rowCum = ws.addRow(['Cumulative Net Operating Income', 'Running Total of Net Income | Annual: Month 12 Ending Cumulative Total']);
   monthColLetters.forEach((col, idx) => {
     const cell = rowCum.getCell(idx + 3);
     cell.numFmt = '$#,##0.00';
-    cell.value = {
-      formula: `SUM($C$8:${col}8)`,
-      result: sampleRev.slice(0, idx + 1).reduce((a, b) => a + b, 0)
-    };
+    if (idx === 0) {
+      cell.value = {
+        formula: 'C19',
+        result: sampleCumNet[0]
+      };
+    } else {
+      const prevCol = monthColLetters[idx - 1];
+      cell.value = {
+        formula: `${prevCol}20+${col}19`,
+        result: sampleCumNet[idx]
+      };
+    }
   });
-  rowCum.getCell(15).numFmt = '$#,##0.00';
-  rowCum.getCell(15).value = { formula: 'N19', result: sampleRev.reduce((a, b) => a + b, 0) };
+  // Annual Summary cell (O20): Month 12 ending cumulative figure (never sum an already cumulative series)
+  const cellCumTotal = rowCum.getCell(15);
+  cellCumTotal.numFmt = '$#,##0.00';
+  cellCumTotal.border = STYLES.totalBorder;
+  cellCumTotal.value = { formula: 'N20', result: sampleCumNet[11] };
 
   // Apply borders to all data rows
-  [rowCust, rowRev, rowBase, rowVar, rowProc, rowDirect, rowGP, rowMargin, rowOpex, rowEbitda, rowCum].forEach(row => {
+  [rowCust, rowTxns, rowRev, rowBase, rowVar, rowProc, rowDirect, rowGP, rowMargin, rowOpex, rowEbitda, rowCum].forEach(row => {
     row.eachCell(cell => {
       if (!cell.border) cell.border = STYLES.thinBorder;
     });
@@ -748,29 +793,39 @@ function buildWorkingModelSheet(workbook, assumptions, overviewSheetName = 'Exec
 
   // Model Disclaimers and Limitations footnote
   const f1 = ws.addRow([
-    'MODEL SPECIFICATIONS & LIMITATIONS: This working model is a starter operational cash-flow simulation driven entirely by user assumptions.'
+    'MODEL SPECIFICATIONS & LIMITATIONS: This working model is an illustrative starter operational simulation driven entirely by user assumptions.'
   ]);
   f1.font = STYLES.subtitleFont;
 
   const f2 = ws.addRow([
-    '• Customer Growth: Modeled as constant monthly compound growth. Customer churn is not included in this starter tier.'
+    '• Customer Growth: Modeled as constant monthly compound growth. Customer churn and multi-tier cohort mechanics are not included in this starter tier.'
   ]);
   f2.font = STYLES.subtitleFont;
 
   const f3 = ws.addRow([
-    '• Payment Transactions: Assumes 1 recurring payment transaction per active paying customer per month.'
+    '• Payment Transactions: Fixed processing fees are calculated using Modeled Paid Transactions (Active Customers * Monthly Transactions per Customer assumption in Sheet 1).'
   ]);
   f3.font = STYLES.subtitleFont;
 
   const f4 = ws.addRow([
-    '• Operating Result: Represents modeled operational margin (EBITDA proxy). Excludes income taxes, debt financing, depreciation, amortization, and full-time employee payroll.'
+    '• Annual Summary Column: Customer count represents ending Month 12 active count; revenue, direct costs, and operating expenses represent 12-month totals.'
   ]);
   f4.font = STYLES.subtitleFont;
 
   const f5 = ws.addRow([
-    '• Not Investment Advice: Startup-AI does not provide certified financial accounting, legal, or investment advice.'
+    '• Cumulative Profit: Cumulative Net Operating Income displays a running total through each month; the final Annual Summary figure equals the cumulative total at the end of Month 12.'
   ]);
   f5.font = STYLES.subtitleFont;
+
+  const f6 = ws.addRow([
+    '• Operating Result: Represents modeled operational margin (EBITDA proxy). Excludes income taxes, debt financing, depreciation, amortization, and full-time employee payroll.'
+  ]);
+  f6.font = STYLES.subtitleFont;
+
+  const f7 = ws.addRow([
+    '• Not Investment Advice: Startup-AI does not provide certified financial accounting, legal, or investment advice.'
+  ]);
+  f7.font = STYLES.subtitleFont;
 
   return ws;
 }

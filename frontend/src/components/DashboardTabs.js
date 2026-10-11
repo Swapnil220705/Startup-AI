@@ -43,7 +43,6 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { normalizePlanData, triggerPrintWithTitle } from '../utils/exportHelpers';
-import { exportFinancialModelXlsx } from '../utils/financialExportHelpers';
 
 export const OverviewTab = ({ data, isDark }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -753,6 +752,7 @@ export const ExportTab = ({ data, navigate, isDark, onOpenShare }) => {
     setFinancialExportSuccess(false);
 
     try {
+      const { exportFinancialModelXlsx } = await import('../utils/financialExportHelpers');
       await exportFinancialModelXlsx(data);
       setFinancialExportSuccess(true);
       setTimeout(() => {

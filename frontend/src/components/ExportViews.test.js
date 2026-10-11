@@ -155,4 +155,52 @@ describe('Print Views and Export UI', () => {
     spyExport.mockRestore();
     spyConsole.mockRestore();
   });
+
+  test('ExportTab handles dynamic import failure gracefully with error feedback', async () => {
+    const spyConsole = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const spyExport = jest.spyOn(financialExportHelpers, 'exportFinancialModelXlsx').mockRejectedValue(new Error('Failed to fetch dynamically imported module'));
+    render(<ExportTab data={mockPlan} navigate={jest.fn()} isDark={false} />);
+
+    const exportBtn = screen.getByRole('button', { name: /Export Excel/i });
+    await act(async () => {
+      fireEvent.click(exportBtn);
+    });
+
+    const errorAlert = await screen.findByText(/Failed to fetch dynamically imported module/i);
+    expect(errorAlert).toBeInTheDocument();
+
+    spyExport.mockRestore();
+    spyConsole.mockRestore();
+  });
+
+  test('ExportTab prevents duplicate concurrent export requests', async () => {
+    let resolveExport;
+    const exportPromise = new Promise((resolve) => { resolveExport = resolve; });
+    const spyExport = jest.spyOn(financialExportHelpers, 'exportFinancialModelXlsx').mockReturnValue(exportPromise);
+    render(<ExportTab data={mockPlan} navigate={jest.fn()} isDark={false} />);
+
+    const exportBtn = screen.getByRole('button', { name: /Export Excel/i });
+    
+    // First click initiates export
+    await act(async () => {
+      fireEvent.click(exportBtn);
+    });
+
+    // While exporting, button is disabled and shows loading text
+    expect(exportBtn).toBeDisabled();
+    expect(screen.getByText(/Generating Excel/i)).toBeInTheDocument();
+
+    // Second click during active export should not trigger another call
+    await act(async () => {
+      fireEvent.click(exportBtn);
+    });
+    expect(spyExport).toHaveBeenCalledTimes(1);
+
+    // Resolve export
+    await act(async () => {
+      resolveExport({ success: true });
+    });
+
+    spyExport.mockRestore();
+  });
 });

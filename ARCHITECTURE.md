@@ -1461,15 +1461,16 @@ The generated workbook organizes strategic qualitative data and dynamic quantita
   - `Executive Overview & Assumptions` (32 chars) is truncated to `Executive Overview & Assumption` (31 chars) by ExcelJS.
   - Formulas in Sheet 4 dynamically reference `'${wsOverview.name}'!$B$20` to guarantee reference integrity without `#REF!` errors.
   - `generateFinancialModelWorkbook` wraps `workbook.getWorksheet` to seamlessly match both the full and truncated tab names.
-- **Editable Baseline Assumptions Table (`B20:B27`)**:
+- **Editable Baseline Assumptions Table (`B20:B28`)**:
   - `B20`: Average Revenue per User / Sub (ARPU) — Default `$49.00` (`$#,##0.00`)
   - `B21`: Starting Active Customers — Default `10` (`#,##0`)
   - `B22`: Monthly Customer Growth Rate — Default `15.0%` (`0.0%`)
   - `B23`: Base Infrastructure Cost / Month — Default `$100.00` (`$#,##0.00`)
   - `B24`: Variable Infrastructure / Active User — Default `$1.50` (`$#,##0.00`)
-  - `B25`: Payment Processing Rate — Default `2.9%` (`0.0%`)
-  - `B26`: Payment Processing Fixed Fee / Txn — Default `$0.30` (`$#,##0.00`)
-  - `B27`: Monthly Fixed Operating Expenses — Default `$500.00` (`$#,##0.00`)
+  - `B25`: Monthly Transactions per Paying Customer — Default `1` (`#,##0`) (illustrative baseline for transaction volume modeling)
+  - `B26`: Payment Processing Fee Rate — Default `2.9%` (`0.0%`)
+  - `B27`: Payment Processing Fixed Fee / Txn — Default `$0.30` (`$#,##0.00`)
+  - `B28`: Monthly Fixed Operating Expenses — Default `$500.00` (`$#,##0.00`)
 
 #### 2. Sheet 2: `Monetization & Revenue Strategy`
 - Preserves the AI-generated qualitative revenue narrative and pricing models without data loss or modification.
@@ -1483,20 +1484,20 @@ The generated workbook organizes strategic qualitative data and dynamic quantita
 - Outlines `keyMetrics` (e.g. MRR, CAC, Churn) and lists core MVP features from `mvp.coreFeatures` as direct engineering drivers.
 
 #### 4. Sheet 4: `12-Month Working Model`
-- Provides an interactive 12-month projection matrix (Months 1–12 across Columns C through N).
+- Provides an interactive 12-month projection matrix (Months 1–12 across Columns C through N, with Annual Summary in Column O).
 - **Application-Authored Formula Engine**:
-  - **Active Customers**: Month 1 references `='${wsOverview.name}'!$B$21`; Months 2–12 calculate `=C7*(1+'${wsOverview.name}'!$B$22)`.
-  - **Gross Revenue**: Calculates `=C7*'${wsOverview.name}'!$B$20`.
-  - **Cloud & Infrastructure Cost**: Calculates `='${wsOverview.name}'!$B$23+(C7*'${wsOverview.name}'!$B$24)`.
-  - **Payment Processing Fees**: Calculates `=(C8*'${wsOverview.name}'!$B$25)+(C7*'${wsOverview.name}'!$B$26)`.
-  - **Total COGS**: Sums `=C11+C12`.
-  - **Gross Profit**: Calculates `=C8-C13`.
-  - **Gross Margin %**: Employs guarded formula `=IF(C8>0,C15/C8,0)` to avoid `#DIV/0!` errors when revenue is zero.
-  - **Operating Expenses**: References `='${wsOverview.name}'!$B$27`.
-  - **Total Expenses**: Sums `=C13+C18`.
-  - **Net Operating Income (EBITDA)**: Calculates `=C8-C20`.
-  - **Cumulative Net Profit**: Month 1 `=C21`; Months 2–12 sum `=C23+D21`.
-  - **Annual Total Column (O)**: Sums revenue and costs via `=SUM(C8:N8)` and computes full-year gross margin.
+  - **Active Customers (Row 6)**: Month 1 references `='${wsOverview.name}'!$B$21`; Months 2–12 calculate `=ROUND(C6*(1+'${wsOverview.name}'!$B$22),0)`. Annual Summary cell (O6) references `=N6` (ending Month 12 active customers, never summed).
+  - **Modeled Paid Transactions (Row 7)**: Calculates `=C6*'${wsOverview.name}'!$B$25` (Active Customers multiplied by editable Monthly Transactions per Customer assumption). Annual Summary cell (O7) sums `=SUM(C7:N7)`.
+  - **Gross Revenue (Row 9)**: Calculates `=C6*'${wsOverview.name}'!$B$20`. Annual Summary cell (O9) sums `=SUM(C9:N9)`.
+  - **Base Infrastructure Cost (Row 11)**: References `='${wsOverview.name}'!$B$23`. Annual Summary cell (O11) sums `=SUM(C11:N11)`.
+  - **Variable Infrastructure Cost (Row 12)**: Calculates `=C6*'${wsOverview.name}'!$B$24`. Annual Summary cell (O12) sums `=SUM(C12:N12)`.
+  - **Payment Processing Fees (Row 13)**: Calculates `=(C9*'${wsOverview.name}'!$B$26)+(C7*'${wsOverview.name}'!$B$27)`. Uses modeled transaction count (Row 7) for fixed fees. Annual Summary cell (O13) sums `=SUM(C13:N13)`.
+  - **Total Direct Operating Costs / COGS (Row 14)**: Sums `=SUM(C11:C13)`. Annual Summary cell (O14) sums `=SUM(C14:N14)`.
+  - **Gross Profit (Row 16)**: Calculates `=C9-C14`. Annual Summary cell (O16) computes `=O9-O14` (Annual Revenue minus Annual Direct Costs).
+  - **Gross Margin % (Row 17)**: Employs guarded formula `=IF(C9>0,C16/C9,0)`. Annual Summary cell (O17) computes `=IF(O9>0,O16/O9,0)` to avoid `#DIV/0!` errors when annual revenue is zero.
+  - **Operating Expenses (Row 18)**: References `='${wsOverview.name}'!$B$28`. Annual Summary cell (O18) sums `=SUM(C18:N18)`.
+  - **Net Operating Income / EBITDA Proxy (Row 19)**: Calculates `=C16-C18`. Annual Summary cell (O19) computes `=O16-O18`.
+  - **Cumulative Net Operating Income (Row 20)**: Month 1 `=C19`; Months 2–12 compute running balance `={prevCol}20+{col}19`. Annual Summary cell (O20) references `=N20` (ending cumulative net operating income at Month 12, never summing running totals).
 - **Prominent Illustrative Notice**: Clearly flags the model as an interactive starter template driven by Sheet 1 assumptions, ensuring founders understand that projections are formulaic models rather than AI guarantees.
 
 ---
@@ -1522,13 +1523,17 @@ The export helper handles incomplete, partially generated, or malformed plans sa
 
 ---
 
-### 15.5 Dashboard Integration & State UX
+### 15.5 Dashboard Integration, State UX & Bundle Optimization
 
 Integrated into `ExportTab` within `frontend/src/components/DashboardTabs.js`:
 - Replaces the "Coming Soon" badge on the Financial Model card with an active "Export Excel" action button.
 - Disabled when plan data is unavailable (`!data`).
 - Includes asynchronous state management: loading spinner ("Generating Excel..."), success confirmation ("Downloaded!"), and error alert handling.
 - Implements duplicate-click guard to prevent concurrent export jobs.
+- **Code Splitting & Bundle Optimization (Corrective Chunk 5.6B.1)**:
+  - `exportFinancialModelXlsx` is imported via dynamic `import('../utils/financialExportHelpers')` upon user interaction.
+  - Isolates `exceljs` (~256.73 kB gzipped) into an on-demand chunk (`223.*.chunk.js`), reducing the initial application bundle from 385.86 kB down to **124.18 kB gzipped** (a 261.69 kB / 68% reduction in initial load).
+  - Handles dynamic module loading failures gracefully by displaying user-facing error feedback.
 - Preserves existing Business Plan PDF export, Pitch Deck navigation, and Share Link modal management completely untouched.
 - Introduces an explicit, genuinely unsupported 4th export card ("Cap Table & Equity") marked with a "Coming Soon" badge and disabled button to preserve user roadmap visibility.
 

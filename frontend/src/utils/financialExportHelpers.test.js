@@ -209,21 +209,29 @@ describe('Financial Model XLSX Export Engine (Phase 5.6B)', () => {
     const m2CustCell = ws4.getCell('D6');
     expect(m2CustCell.value.formula).toMatch(/ROUND\(C6\*\(1\+'Executive Overview & Assumption'![$]B[$]22\),0\)/);
 
-    // Row 8: Gross Revenue (Month 1 = Customers * ARPU)
-    const m1RevCell = ws4.getCell('C8');
+    // Row 7: Modeled Paid Transactions (Month 1 = Customers * Txns per Customer)
+    const m1TxnCell = ws4.getCell('C7');
+    expect(m1TxnCell.value.formula).toMatch(/C6\*'Executive Overview & Assumption'![$]B[$]25/);
+
+    // Row 9: Gross Revenue (Month 1 = Customers * ARPU)
+    const m1RevCell = ws4.getCell('C9');
     expect(m1RevCell.value.formula).toMatch(/C6\*'Executive Overview & Assumption'![$]B[$]20/);
 
-    // Row 15: Gross Profit (Revenue - Total Direct Costs)
-    const m1GPCell = ws4.getCell('C15');
-    expect(m1GPCell.value.formula).toBe('C8-C13');
+    // Row 13: Payment Processing Fees (Revenue * Rate + Txns * Fixed Fee)
+    const m1ProcCell = ws4.getCell('C13');
+    expect(m1ProcCell.value.formula).toMatch(/\(C9\*'Executive Overview & Assumption'![$]B[$]26\)\+\(C7\*'Executive Overview & Assumption'![$]B[$]27\)/);
 
-    // Row 18: Estimated Operating Result (Gross Profit - Opex)
-    const m1EbitdaCell = ws4.getCell('C18');
-    expect(m1EbitdaCell.value.formula).toBe('C15-C17');
+    // Row 16: Gross Profit (Revenue - Total Direct Costs)
+    const m1GPCell = ws4.getCell('C16');
+    expect(m1GPCell.value.formula).toBe('C9-C14');
 
-    // Row 8 Total: Full Year Gross Revenue Sum
-    const yearRevCell = ws4.getCell('O8');
-    expect(yearRevCell.value.formula).toBe('SUM(C8:N8)');
+    // Row 19: Net Operating Income (Gross Profit - Opex)
+    const m1EbitdaCell = ws4.getCell('C19');
+    expect(m1EbitdaCell.value.formula).toBe('C16-C18');
+
+    // Row 9 Total: Full Year Gross Revenue Sum
+    const yearRevCell = ws4.getCell('O9');
+    expect(yearRevCell.value.formula).toBe('SUM(C9:N9)');
   });
 
   // --------------------------------------------------------------------------
@@ -238,15 +246,16 @@ describe('Financial Model XLSX Export Engine (Phase 5.6B)', () => {
     expect(allText).toMatch(/NOT AI-generated financial forecasts/i);
     expect(allText).toMatch(/Starter Value \(Editable\)/i);
 
-    // Default assumption numbers exist in exact cells B20-B27
+    // Default assumption numbers exist in exact cells B20-B28
     expect(ws1.getCell('B20').value).toBe(49.00); // ARPU
     expect(ws1.getCell('B21').value).toBe(10);    // Starting Customers
     expect(ws1.getCell('B22').value).toBe(0.15);  // Growth Rate
     expect(ws1.getCell('B23').value).toBe(100.00);// Base Infra
     expect(ws1.getCell('B24').value).toBe(1.50);  // Var Infra
-    expect(ws1.getCell('B25').value).toBe(0.029); // Fee Rate
-    expect(ws1.getCell('B26').value).toBe(0.30);  // Fixed Fee
-    expect(ws1.getCell('B27').value).toBe(500.00);// Opex
+    expect(ws1.getCell('B25').value).toBe(1);     // Monthly Transactions per Customer
+    expect(ws1.getCell('B26').value).toBe(0.029); // Fee Rate
+    expect(ws1.getCell('B27').value).toBe(0.30);  // Fixed Fee
+    expect(ws1.getCell('B28').value).toBe(500.00);// Opex
   });
 
   // --------------------------------------------------------------------------
@@ -257,11 +266,11 @@ describe('Financial Model XLSX Export Engine (Phase 5.6B)', () => {
     const ws4 = wb.getWorksheet('12-Month Working Model');
 
     // Gross margin formulas are guarded with IF(Revenue > 0, GP / Revenue, 0)
-    const marginM1 = ws4.getCell('C16');
-    expect(marginM1.value.formula).toBe('IF(C8>0,C15/C8,0)');
+    const marginM1 = ws4.getCell('C17');
+    expect(marginM1.value.formula).toBe('IF(C9>0,C16/C9,0)');
 
-    const marginFullYear = ws4.getCell('O16');
-    expect(marginFullYear.value.formula).toBe('IF(O8>0,O15/O8,0)');
+    const marginFullYear = ws4.getCell('O17');
+    expect(marginFullYear.value.formula).toBe('IF(O9>0,O16/O9,0)');
 
     // Verify formula structure is preserved and guarded when inputs are 0
     const zeroCustPlan = generateFinancialModelWorkbook(
@@ -269,8 +278,8 @@ describe('Financial Model XLSX Export Engine (Phase 5.6B)', () => {
       { startingCustomers: 0, arpu: 0 }
     );
     const zeroWs4 = zeroCustPlan.getWorksheet('12-Month Working Model');
-    expect(zeroWs4.getCell('C16').value.formula).toBe('IF(C8>0,C15/C8,0)');
-    expect(zeroWs4.getCell('O16').value.formula).toBe('IF(O8>0,O15/O8,0)');
+    expect(zeroWs4.getCell('C17').value.formula).toBe('IF(C9>0,C16/C9,0)');
+    expect(zeroWs4.getCell('O17').value.formula).toBe('IF(O9>0,O16/O9,0)');
   });
 
   // --------------------------------------------------------------------------
@@ -365,5 +374,108 @@ describe('Financial Model XLSX Export Engine (Phase 5.6B)', () => {
     const ws1 = wb.getWorksheet('Executive Overview & Assumptions');
     const nameCell = ws1.getRows(1, 10).find(r => r?.getCell(1)?.value === 'Startup Name')?.getCell(2);
     expect(nameCell.value).toBe("'=cmd|/c calc!A0");
+  });
+
+  // --------------------------------------------------------------------------
+  // 13. Transaction Count Follows Editable Assumption
+  // --------------------------------------------------------------------------
+  test('13: Modeled transaction count in Sheet 4 strictly follows the editable assumption ($B$25)', () => {
+    // Default assumption: 1 transaction per customer
+    const wbDefault = generateFinancialModelWorkbook(samplePlanObjectRevenue);
+    const ws4Default = wbDefault.getWorksheet('12-Month Working Model');
+    expect(ws4Default.getCell('C7').value.formula).toMatch(/C6\*'Executive Overview & Assumption'![$]B[$]25/);
+    expect(ws4Default.getCell('C7').value.result).toBe(10); // 10 customers * 1 txn
+
+    // Custom assumption override: 3 transactions per customer
+    const wbCustom = generateFinancialModelWorkbook(samplePlanObjectRevenue, {
+      monthlyTransactionsPerCustomer: 3
+    });
+    const ws1Custom = wbCustom.getWorksheet('Executive Overview & Assumptions');
+    const ws4Custom = wbCustom.getWorksheet('12-Month Working Model');
+
+    expect(ws1Custom.getCell('B25').value).toBe(3);
+    expect(ws4Custom.getCell('C7').value.formula).toMatch(/C6\*'Executive Overview & Assumption'![$]B[$]25/);
+    expect(ws4Custom.getCell('C7').value.result).toBe(30); // 10 customers * 3 txns
+  });
+
+  // --------------------------------------------------------------------------
+  // 14. Fixed Payment Processing Fees Use Correct Transaction Count
+  // --------------------------------------------------------------------------
+  test('14: Fixed payment processing fees strictly use transaction count (Row 7), not customer count (Row 6)', () => {
+    const wb = generateFinancialModelWorkbook(samplePlanObjectRevenue);
+    const ws4 = wb.getWorksheet('12-Month Working Model');
+
+    const m1Proc = ws4.getCell('C13');
+    // Formula must multiply rate by revenue (C9) and fixed fee by transactions (C7)
+    expect(m1Proc.value.formula).toBe("(C9*'Executive Overview & Assumption'!$B$26)+(C7*'Executive Overview & Assumption'!$B$27)");
+    expect(m1Proc.value.formula).not.toContain('C6*');
+  });
+
+  // --------------------------------------------------------------------------
+  // 15. Annual Ending Customers Are Not Summed As Customer Total
+  // --------------------------------------------------------------------------
+  test('15: Annual ending active customers is labeled as ending value and equals Month 12, never summed', () => {
+    const wb = generateFinancialModelWorkbook(samplePlanObjectRevenue);
+    const ws4 = wb.getWorksheet('12-Month Working Model');
+
+    // Annual summary cell for active customers (O6) references Month 12 (N6)
+    const annualCustCell = ws4.getCell('O6');
+    expect(annualCustCell.value.formula).toBe('N6');
+    expect(annualCustCell.value.formula).not.toMatch(/SUM/i);
+
+    // Label in column B explicitly clarifies ending value
+    const logicLabel = ws4.getCell('B6').value;
+    expect(logicLabel).toMatch(/Annual: Ending Count \(Month 12\)/i);
+  });
+
+  // --------------------------------------------------------------------------
+  // 16. Annual Totals Reconcile with Monthly Revenue and Expenses
+  // --------------------------------------------------------------------------
+  test('16: Annual summary row totals reconcile with monthly revenue, direct costs, and opex', () => {
+    const wb = generateFinancialModelWorkbook(samplePlanObjectRevenue);
+    const ws4 = wb.getWorksheet('12-Month Working Model');
+
+    // Revenue: Annual is 12-month sum
+    expect(ws4.getCell('O9').value.formula).toBe('SUM(C9:N9)');
+
+    // Direct Costs: Annual is 12-month sum
+    expect(ws4.getCell('O11').value.formula).toBe('SUM(C11:N11)'); // Base infra
+    expect(ws4.getCell('O12').value.formula).toBe('SUM(C12:N12)'); // Var infra
+    expect(ws4.getCell('O13').value.formula).toBe('SUM(C13:N13)'); // Processing
+    expect(ws4.getCell('O14').value.formula).toBe('SUM(C14:N14)'); // Total direct
+
+    // Gross Profit: Annual Revenue minus Annual Direct Costs
+    expect(ws4.getCell('O16').value.formula).toBe('O9-O14');
+
+    // Gross Margin %: Guarded formula dividing Annual Gross Profit by Annual Revenue
+    expect(ws4.getCell('O17').value.formula).toBe('IF(O9>0,O16/O9,0)');
+
+    // Operating Expenses: Annual is 12-month sum
+    expect(ws4.getCell('O18').value.formula).toBe('SUM(C18:N18)');
+
+    // Net Operating Income: Annual Gross Profit minus Annual Opex
+    expect(ws4.getCell('O19').value.formula).toBe('O16-O18');
+  });
+
+  // --------------------------------------------------------------------------
+  // 17. Month 12 Cumulative Profit Equals Final Annual Cumulative Figure
+  // --------------------------------------------------------------------------
+  test('17: Month 12 cumulative profit equals final cumulative figure, never summing running totals', () => {
+    const wb = generateFinancialModelWorkbook(samplePlanObjectRevenue);
+    const ws4 = wb.getWorksheet('12-Month Working Model');
+
+    // Month 1 is initial month net operating income
+    expect(ws4.getCell('C20').value.formula).toBe('C19');
+
+    // Month 2 is Month 1 cumulative + Month 2 net
+    expect(ws4.getCell('D20').value.formula).toBe('C20+D19');
+
+    // Month 12 is Month 11 cumulative + Month 12 net
+    expect(ws4.getCell('N20').value.formula).toBe('M20+N19');
+
+    // Annual cumulative figure (O20) strictly equals Month 12 cumulative (N20)
+    expect(ws4.getCell('O20').value.formula).toBe('N20');
+    // Must NOT sum the cumulative row which would overstate the total
+    expect(ws4.getCell('O20').value.formula).not.toMatch(/SUM/i);
   });
 });

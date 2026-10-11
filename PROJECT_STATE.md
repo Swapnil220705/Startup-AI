@@ -68,9 +68,9 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 5 — Pitch Deck Export & Sharing
-- **Current Chunk**: Chunk 5.6B — Financial Model XLSX Export Engine & UI Integration
+- **Current Chunk**: Corrective Chunk 5.6B.1 — Financial Formula Semantics and Bundle Optimization
 - **Status**: Completed
-- **Phase 5 Status**: COMPLETED (Chunks 5.1–5.5, Corrective Chunk 5.5.1, Chunk 5.6A Audit, and Chunk 5.6B Export Completed)
+- **Phase 5 Status**: COMPLETED (Chunks 5.1–5.5, Corrective Chunk 5.5.1, Chunk 5.6A Audit, Chunk 5.6B Export & Corrective Chunk 5.6B.1 Completed)
 - **Next Planned Chunk**: Phase 6 — Production Hardening, Test Suite Modernization & CI/CD
 
 ---
@@ -271,13 +271,50 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ---
 
+## 7.11 Completed in Chunk 5.6B — Financial Model XLSX Export Engine & UI Integration
+
+- [x] **4-Worksheet Workbook Architecture (`frontend/src/utils/financialExportHelpers.js`)**:
+  - `Model Overview & Assumptions`: Key model metadata, qualitative assumptions, and editable starter assumption table with styling and number formatting.
+  - `Revenue & Pricing Strategy`: AI-generated pricing tiers, revenue streams, and growth opportunities with dual-format normalization.
+  - `Cost Structure & Drivers`: Direct COGS, fixed operating costs, and unit economics qualitative drivers.
+  - `12-Month Starter Projections`: Dynamic formulas linking to Sheet 1 assumptions for active customers, transactions, gross revenue, direct costs, gross profit, operating expenses, and net operating income.
+- [x] **Non-Fabrication Adherence**: Explicitly avoids hallucinating user-specific financial projections; qualitative AI content is preserved faithfully while numerical projections are labeled as illustrative starter templates.
+- [x] **Security & Integrity**: Formula injection escaping for CSV/Excel injection defense (CWE-1236), OpenXML sheet name sanitization (31 char limit), and filename path-traversal prevention.
+
+---
+
+## 7.12 Completed in Corrective Chunk 5.6B.1 — Financial Formula Semantics and Bundle Optimization
+
+- [x] **Explicit Payment Processing Assumptions (`frontend/src/utils/financialExportHelpers.js`)**:
+  - Added editable assumption in Sheet 1: `Monthly Transactions per Paying Customer` (`Row 25`, default `1`, labeled `Count (txns/customer/mo)` with yellow editable fill).
+  - Shifted Fee Rate to Row 26, Fixed Fee to Row 27, Other Opex to Row 28.
+  - Added Row 7 in Sheet 4: `Modeled Paid Transactions` (`={col}6*'${wsOverview.name}'!$B$25`), with 12-month annual total `=SUM(C7:N7)`.
+  - Updated Row 13 (Payment Processing Fees) formula: `=({col}9*'${wsOverview.name}'!$B$26)+({col}7*'${wsOverview.name}'!$B$27)`. Fixed processing fees strictly multiply by Row 7 transaction count rather than customer count directly.
+  - Modifying the transaction assumption cell (`B25`) dynamically recalculates both transaction count and fixed payment processing fees across all 12 months.
+- [x] **Clarified Annual Summary & Cumulative Profit Semantics**:
+  - **Ending Active Customers (Row 6, Col O)**: Labeled in Col B as `Ending Active Customers (M12)` and uses formula `=N6` (closing Month 12 value). Prevents overstating customer counts by summing across months.
+  - **Annual 12-Month Totals (Rows 7, 9, 11-14, 18, Col O)**: Explicitly labeled with `(12-Mo Total)` in Col B and use `=SUM(C{row}:N{row})`.
+  - **Annual Gross Profit (Row 16, Col O)**: Calculated via `=O9-O14` (Annual Revenue minus Annual Direct Costs), ensuring mathematical reconciliation with monthly sums.
+  - **Annual Gross Margin % (Row 17, Col O)**: Calculated via `=IF(O9>0,O16/O9,0)` with zero-revenue division guard.
+  - **Monthly Cumulative Net Operating Income (Row 20, Cols C–N)**: True running total through each month (`C20` = `=C19`, `D20` = `=C20+D19`, etc.).
+  - **Final Annual Cumulative Figure (Row 20, Col O)**: Uses `=N20` (ending cumulative figure at Month 12). Strictly eliminates summing an already cumulative series (`=SUM(C20:N20)` would severely overstate cumulative profit).
+- [x] **Frontend Bundle Code Splitting & Optimization (`frontend/src/components/DashboardTabs.js`)**:
+  - Replaced static top-level import of `financialExportHelpers` with dynamic `import('../utils/financialExportHelpers')` inside `handleExportFinancialModel`.
+  - Initial frontend production bundle slashed from **385.86 kB gzipped down to 124.18 kB gzipped (-261.69 kB / -68% reduction)**.
+  - Isolated ExcelJS and spreadsheet generation into on-demand asynchronous chunk (`223.1018c41a.chunk.js`, 256.73 kB gzipped), loaded only when user triggers "Export Excel".
+  - Maintained loading spinner, double-click debouncing (`isExportingFinancialModel` guard), error toast feedback, and existing PDF export and sharing controls.
+- [x] **Comprehensive Test Verification**:
+  - `frontend/src/utils/financialExportHelpers.test.js`: 17 deterministic tests verifying transaction assumptions, fee calculations, ending customers (`=N6`), annual total reconciliations, and cumulative profit (`=N20`).
+  - `frontend/src/components/ExportViews.test.js`: 10 deterministic tests verifying dynamic loading, generation failure error handling, duplicate click prevention, and PDF export preservation.
+  - Full frontend suite (12 suites, 93 tests) and full backend suite (18 suites) passing cleanly.
+
+---
+
 ## 8. Next Planned Phase & Chunk
 
-**Phase 5: Pitch Deck Export & Sharing**
-- **Chunk 5.3 — Plan Sharing Database Foundation & Backend API**:
-  - Database Migration 003: create `plan_shares` table (`id`, `plan_id`, `user_id`, `share_token`, `is_active`, `view_count`, `created_at`, `revoked_at`).
-  - Endpoints: `POST /api/plans/:id/share` (generate share token), `DELETE /api/plans/:id/share` (revoke share token), `GET /api/shared/:token` (sanitized read-only plan fetch).
-  - Rate limiting, token validation, and secret sanitization.
+**Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
+- Modernize React 19 test harness and package dependencies.
+- Production environment configurations and CI/CD pipelines.
 
 ---
 
@@ -313,7 +350,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 5.5: Dashboard & Pitch Preview Share Management UX (Completed - `d98cd8c`)
   - Corrective Chunk 5.5.1: Enforce One Active Share Per Plan (Completed - `fcea8f1`)
   - Chunk 5.6A: Financial Model Export: Architecture Audit Only (Completed - `81e5a3b`)
-  - Chunk 5.6B: Financial Model XLSX Export Engine & UI Integration (Completed)
+  - Chunk 5.6B: Financial Model XLSX Export Engine & UI Integration (Completed - `eb40b2c`)
+  - Corrective Chunk 5.6B.1: Financial Formula Semantics and Bundle Optimization (Completed)
 - **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
 
 ---
@@ -321,7 +359,7 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `fcea8f1` (fix: enforce one active share per plan)
+- **Pre-Chunk Commit**: `eb40b2c` (feat: add financial model xlsx export)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
@@ -333,6 +371,11 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 11. Verification Log
 
 | Verification Check | Result | Details |
+|---|---|---|
+| **Financial Model Formula Semantics & Assumptions (17 tests)** | PASS | `frontend/src/utils/financialExportHelpers.test.js`: 17 tests verifying: 1) dual-format revenue normalization, 2) growth opportunities, 3) missing/partial fallbacks, 4) 4 worksheets, 5) text cell types, 6) interactive starter formula templates, 7) illustrative disclaimer labels, 8) gross margin zero-revenue guard (`=IF(O9>0,O16/O9,0)`), 9) filename sanitization, 10) Blob download invocation, 11) CWE-1236 escaping, 12) 31-char sheet names, 13) monthly transactions assumption and Row 7 formula, 14) fixed processing fees multiplying Row 7 transaction count, 15) ending active customers `=N6`, 16) annual revenue/costs reconciliations, and 17) Month 12 cumulative profit `=N20`. |
+| **Dynamic Import & ExportViews Interactions (10 tests)** | PASS | `frontend/src/components/ExportViews.test.js`: 10 tests verifying: 1) Pitch deck print trigger, 2) Business plan PDF print trigger, 3) Pitch deck navigation from Export tab, 4) Business plan print trigger from Export tab, 5) Share modal trigger, 6) Financial model active export with loading/success feedback, 7) Disabled financial export when plan is absent, 8) "Coming Soon" card for unsupported features, 9) dynamic import failure user-friendly error toast, and 10) duplicate export click prevention while in-flight. |
+| **Full Frontend Test Suite (12 suites, 93 tests)** | PASS | `CI=true npm test -- --watchAll=false src`: 12 test suites, 93 tests run cleanly with 0 failures across all components, pages, utils, and export flows. |
+| **Frontend Production Build Code Splitting** | PASS | `npm run build` compiled cleanly. Initial bundle reduced from 385.86 kB to 124.18 kB gzipped (-68%). ExcelJS code-split into on-demand chunk `223.1018c41a.chunk.js` (256.73 kB gzipped). |
 |---|---|---|
 | **Financial Model Export Helper Suite (12 tests)** | PASS | `frontend/src/utils/financialExportHelpers.test.js`: 12 tests verifying: 1) dual-format revenue normalization (object vs array), 2) growth opportunity preservation, 3) missing/partial plan fallbacks, 4) 4 worksheets generated with correct names, 5) text cells preserved as text, 6) interactive starter formula templates in Sheet 4 referencing Sheet 1 assumption cells, 7) illustrative disclaimer labels, 8) gross margin zero-revenue guard (`=IF(C8>0,C15/C8,0)`), 9) filename sanitization and traversal prevention, 10) browser Blob download invocation, 11) CWE-1236 formula injection escaping (`=`, `+`, `-`, `@`, `\t`, `\r`), and 12) OpenXML 31-character worksheet name handling. |
 | **Export Views & Dashboard Tabs Suite (8 tests)** | PASS | `frontend/src/components/ExportViews.test.js`: 8 tests verifying: 1) Pitch deck print trigger on pitch page, 2) Business plan PDF print trigger, 3) Pitch deck navigation from Export tab, 4) Business plan print trigger from Export tab, 5) Share modal trigger, 6) Financial model active "Export Excel" download action with loading/success feedback, 7) Financial export disabled state when plan data is unavailable, and 8) Genuine "Coming Soon" card for unsupported "Cap Table & Equity" feature. |
