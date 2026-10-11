@@ -68,9 +68,9 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 5 — Pitch Deck Export & Sharing
-- **Current Chunk**: Chunk 5.6A — Financial Model Export: Architecture Audit Only
+- **Current Chunk**: Corrective Chunk 5.5.1 — Enforce One Active Share Per Plan
 - **Status**: Completed
-- **Phase 5 Status**: IN PROGRESS (Chunks 5.1–5.5 Completed; Chunk 5.6A Audit Completed; Chunk 5.6B Export Implementation Pending)
+- **Phase 5 Status**: IN PROGRESS (Chunks 5.1–5.5, Corrective Chunk 5.5.1 & Chunk 5.6A Audit Completed; Chunk 5.6B Export Implementation Pending)
 - **Next Planned Chunk**: Chunk 5.6B — Financial Model XLSX Export Engine & UI Integration
 
 ---
@@ -311,7 +311,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 5.3: Plan Sharing Database Foundation & Backend API (Completed - `15aa3ed`)
   - Chunk 5.4: Public Shareable Presentation Page & Viral Growth UX (Completed - `0cadc42`)
   - Chunk 5.5: Dashboard & Pitch Preview Share Management UX (Completed - `d98cd8c`)
-  - Chunk 5.6A: Financial Model Export: Architecture Audit Only (COMPLETED)
+  - Corrective Chunk 5.5.1: Enforce One Active Share Per Plan (COMPLETED)
+  - Chunk 5.6A: Financial Model Export: Architecture Audit Only (Completed - `81e5a3b`)
   - Chunk 5.6B: Financial Model XLSX Export Engine & UI Integration (PENDING)
 - **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
 
@@ -320,12 +321,12 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `d98cd8c` (feat: add secure share management UX)
+- **Pre-Chunk Commit**: `81e5a3b` (docs: audit financial model export architecture)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
 - **Phase 4 Status**: COMPLETED
-- **Phase 5 Status**: IN PROGRESS (Chunks 5.1–5.5 & 5.6A Completed; 5.6B Pending)
+- **Phase 5 Status**: IN PROGRESS (Chunks 5.1–5.5, Corrective 5.5.1 & 5.6A Completed; 5.6B Pending)
 
 ---
 
@@ -333,10 +334,11 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 | Verification Check | Result | Details |
 |---|---|---|
+| **One-Active-Share Concurrency Suite (7 tests)** | PASS | `backend/tests/planShareConcurrency.test.js`: 7 deterministic tests verifying: 1) database partial unique index rejects two active shares for the same plan, 2) multiple creation attempts leave exactly 1 active share without duplication, 3) competing requests identically return the winning active URL and token, 4) multiple historical revoked shares coexist safely with active share, 5) explicit replacement invalidates old link leaving exactly 1 active link, 6) migration 005 reconciles legacy duplicate active shares preserving newest, and 7) uniqueness constraint conflict recovery resolves to winning active share cleanly. |
 | **Financial Model Export Architecture Audit (Phase 5.6A)** | PASS | Comprehensive audit of existing financial data availability across `backend/models/revenueModel.js`, `leanCanvas.js`, `IdeaInputPage.js`, and `exportHelpers.js`. Confirmed application stores qualitative monetization strategies and cost drivers, with zero discrete numerical prices, line items, or multi-year time-series forecasts. Evaluated CSV vs XLSX vs PDF; recommended 4-sheet formula-driven XLSX model adhering to the non-fabrication principle. Audited Phase 5.5 AES-256-GCM sharing security and identified concurrency transaction recommendation. |
 | **Phase 5.5 Share Recovery & Management Suite (12 tests)** | PASS | `backend/tests/planShareRecovery.test.js`: 12 comprehensive tests covering: 1) new share creation persists hash and AES-256-GCM ciphertext without plaintext fallback, 2) reopening sharing recovers existing URL identically, 3) non-mutating status query, 4) AES-256-GCM authenticated encryption/decryption, 5) wrong key/corrupted tag safe failure, 6) legacy share requires replacement while keeping old link active, 7) atomic replacement invalidates old URL and generates fresh active link, 8) revocation and subsequent link creation, 9) anonymous/non-owner isolation (401/404), 10) missing encryption key throws without plaintext fallback, 11) HTTP controller contracts (GET, POST, DELETE), and 12) public DTO strict exclusion of encryption/owner fields. |
 | **Phase 5.5 ShareModal Frontend Suite (11 tests)** | PASS | `frontend/src/components/ShareModal.test.js`: 11 tests verifying requirements 14–24: authenticated owner modal open, anonymous trial sign-in prompt, share creation displaying URL, copy link success with clipboard and fallback, existing active URL recovery without duplicate creation, legacy link requiring explicit replacement confirmation, revocation confirmation dialog and server confirmation, network error retry CTA, plan switching state reset, and ExportTab PDF export functionality preservation. |
-| **Backend Test Suite (17 suites)** | PASS | `npm test` in `backend` runs all 17 test suites cleanly with 0 errors across 190+ assertions, including both `tests/planSharing.test.js` and `tests/planShareRecovery.test.js`. |
+| **Backend Test Suite (18 suites)** | PASS | `npm test` in `backend` runs all 18 test suites cleanly with 0 errors across 200+ assertions, including `tests/planSharing.test.js`, `tests/planShareRecovery.test.js`, and `tests/planShareConcurrency.test.js`. |
 | **Frontend Test Suite (11 suites, 71 tests)** | PASS | `CI=true npm test` runs all 11 suites cleanly (71/71 tests pass) with 0 regressions. |
 | **Frontend Production Build** | PASS | `npm run build` compiles with 0 errors (`main.8be09ce0.js`). Zero ESLint warnings in `ShareModal.js`. |
 | **Public Share Page Frontend Suite (14 tests)** | PASS | `src/pages/SharedPlanPage.test.js` tests all 14 requirements: valid token rendering, unauthenticated access, skeleton loading state, invalid token uniform message, revoked token uniform message, network error with retry, retry button trigger, missing module resilience, owner/session/error data exclusion, absence of owner/edit controls, long text and empty collection handling, custom router integration, dynamic robots noindex meta injection & cleanup, and zero token leakage to web storage. |

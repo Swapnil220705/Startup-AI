@@ -1244,6 +1244,28 @@ Implemented in `frontend/src/components/ShareModal.js`:
 
 ---
 
+### 13.7 One Active Share Per Plan Invariant & Concurrency Hardening (Chunk 5.5.1)
+
+#### Database Migration 005
+Implemented in `backend/db/migrations/005_enforce_one_active_share_per_plan.sql`:
+1. **Deterministic Reconciliation**: If any historical duplicate active shares exist, the migration preserves the newest active record (`created_at DESC, id DESC`) and marks older duplicate active rows as revoked (`is_active = 0, revoked_at = now`) to preserve audit and view history.
+2. **Partial Unique Index**:
+   ```sql
+   CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_shares_one_active
+   ON plan_shares(plan_id)
+   WHERE is_active = 1;
+   ```
+   - Enforces the database invariant that a given `plan_id` can appear at most once where `is_active = 1`.
+   - Allows an unlimited number of revoked historical shares (`is_active = 0`) to coexist for the same `plan_id`.
+
+#### Concurrency-Safe Service Creation
+In `backend/services/planShareService.js` (`createOrGetActiveShare`):
+1. **Atomic Transaction Re-Check**: Creation is enclosed in `dbInstance.transaction(...)`, which re-queries active share status before attempting an insert.
+2. **Graceful Conflict Recovery**: If a concurrent request races and inserts an active share, SQLite's partial unique index raises `SQLITE_CONSTRAINT_UNIQUE`. The service intercepts this error, queries the winning active share, decrypts its token, and returns `{ share: winningShareData, isExisting: true }`.
+3. **Guarantees**: Competing requests always resolve to the exact same singular active link without 500 errors, without duplicate rows, and without leaking cryptographic material or database errors.
+
+---
+
 ## 14. Financial Model Export Architecture Audit (Phase 5.6A)
 
 ### 14.1 Objective & Context
@@ -1374,9 +1396,7 @@ A comprehensive inspection of the Phase 5.5 implementation confirms:
 
 3. **Concurrency & One-Active-Share Guarantee**:
    - **Link Replacement (`replace: true`)**: Wrapped in `dbInstance.transaction(() => { ... })`. Executes serially, revoking prior active links before inserting replacement.
-   - **Initial Share Creation (`replace: false`)**:
-     *Finding*: In `planShareService.js`, the check for existing share and the subsequent insert are currently separate statements outside an explicit transaction, and `plan_shares` does not have a partial unique index on `(plan_id) WHERE is_active = 1`. In high-concurrency environments, two concurrent initial share requests could theoretically both pass the select and insert active rows.
-     *Recommendation*: Wrap initial share creation in `dbInstance.transaction(...)` or add `CREATE UNIQUE INDEX idx_plan_shares_one_active ON plan_shares(plan_id) WHERE is_active = 1;`.
+   - **Initial Share Creation (`replace: false`)**: Resolved in Corrective Chunk 5.5.1 via Migration 005 (`idx_plan_shares_one_active` partial unique index on `plan_shares(plan_id) WHERE is_active = 1`), transactional re-checking in `createOrGetActiveShare`, and graceful `SQLITE_CONSTRAINT_UNIQUE` conflict recovery that returns the winning active share.
 
 4. **Key Persistence Requirements**:
    - `SHARE_ENCRYPTION_KEY` must remain persistent in the host environment. If rotated or lost, existing links remain active publicly (via SHA-256 hash lookup), but authenticated owners will be prompted with `requiresReplacement: true` to generate a fresh recoverable link upon reopening the share modal.

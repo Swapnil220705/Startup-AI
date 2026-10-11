@@ -241,20 +241,13 @@ function createOrGetActiveShare(planId, userId, optionsOrDb = {}, customDb = nul
     return executeReplacement();
   }
 
-  // 3. Check for an existing active, non-revoked share
-  const existingShare = dbInstance.prepare(`
-    SELECT id, plan_id, user_id, share_token, encrypted_token, is_active, view_count, created_at, revoked_at
-    FROM plan_shares
-    WHERE plan_id = ? AND is_active = 1 AND revoked_at IS NULL
-    LIMIT 1
-  `).get(trimmedPlanId);
-
-  if (existingShare) {
+  // 3. Helper to format an active share row into the response DTO
+  const formatActiveShare = (row) => {
     let decryptedToken = null;
     let requiresReplacement = false;
 
-    if (existingShare.encrypted_token) {
-      decryptedToken = decryptToken(existingShare.encrypted_token);
+    if (row.encrypted_token) {
+      decryptedToken = decryptToken(row.encrypted_token);
       if (!decryptedToken) {
         requiresReplacement = true;
       }
@@ -263,11 +256,11 @@ function createOrGetActiveShare(planId, userId, optionsOrDb = {}, customDb = nul
     }
 
     const shareData = {
-      id: existingShare.id,
-      planId: existingShare.plan_id,
-      isActive: Boolean(existingShare.is_active),
-      createdAt: existingShare.created_at,
-      viewCount: existingShare.view_count,
+      id: row.id,
+      planId: row.plan_id,
+      isActive: Boolean(row.is_active),
+      createdAt: row.created_at,
+      viewCount: row.view_count,
       alreadyExists: true,
       requiresReplacement
     };
@@ -281,33 +274,70 @@ function createOrGetActiveShare(planId, userId, optionsOrDb = {}, customDb = nul
       share: shareData,
       isExisting: true
     };
+  };
+
+  const queryActiveShare = () => {
+    return dbInstance.prepare(`
+      SELECT id, plan_id, user_id, share_token, encrypted_token, is_active, view_count, created_at, revoked_at
+      FROM plan_shares
+      WHERE plan_id = ? AND is_active = 1 AND revoked_at IS NULL
+      LIMIT 1
+    `).get(trimmedPlanId);
+  };
+
+  // 4. Fast path: check for an existing active, non-revoked share
+  const existingShare = queryActiveShare();
+  if (existingShare) {
+    return formatActiveShare(existingShare);
   }
 
-  // 4. Generate a new high-entropy token and persist SHA-256 hash + encrypted token
-  const rawToken = generateShareToken();
-  const tokenHash = hashShareToken(rawToken);
-  const encryptedToken = encryptToken(rawToken);
-  const shareId = crypto.randomUUID();
-  const now = new Date().toISOString();
+  // 5. Concurrency-safe creation: wrapped in transaction with UNIQUE constraint conflict recovery
+  const createNewShare = dbInstance.transaction(() => {
+    // Re-check inside transaction in case another request won the race in the interim
+    const activeInsideTx = queryActiveShare();
+    if (activeInsideTx) {
+      return formatActiveShare(activeInsideTx);
+    }
 
-  dbInstance.prepare(`
-    INSERT INTO plan_shares (
-      id, plan_id, user_id, share_token, encrypted_token, is_active, view_count, created_at, revoked_at
-    ) VALUES (?, ?, ?, ?, ?, 1, 0, ?, NULL)
-  `).run(shareId, trimmedPlanId, trimmedUserId, tokenHash, encryptedToken, now);
+    const rawToken = generateShareToken();
+    const tokenHash = hashShareToken(rawToken);
+    const encryptedToken = encryptToken(rawToken);
+    const shareId = crypto.randomUUID();
+    const now = new Date().toISOString();
 
-  return {
-    share: {
-      id: shareId,
-      planId: trimmedPlanId,
-      token: rawToken,
-      url: `/share/${rawToken}`,
-      isActive: true,
-      createdAt: now,
-      viewCount: 0
-    },
-    isExisting: false
-  };
+    dbInstance.prepare(`
+      INSERT INTO plan_shares (
+        id, plan_id, user_id, share_token, encrypted_token, is_active, view_count, created_at, revoked_at
+      ) VALUES (?, ?, ?, ?, ?, 1, 0, ?, NULL)
+    `).run(shareId, trimmedPlanId, trimmedUserId, tokenHash, encryptedToken, now);
+
+    return {
+      share: {
+        id: shareId,
+        planId: trimmedPlanId,
+        token: rawToken,
+        url: `/share/${rawToken}`,
+        isActive: true,
+        createdAt: now,
+        viewCount: 0
+      },
+      isExisting: false
+    };
+  });
+
+  try {
+    return createNewShare();
+  } catch (err) {
+    // Gracefully handle partial UNIQUE index conflict if a concurrent request won the race
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || (err.message && err.message.includes('UNIQUE constraint failed'))) {
+      const winningShare = queryActiveShare();
+      if (winningShare) {
+        return formatActiveShare(winningShare);
+      }
+    }
+    // Re-throw any other error (such as missing encryption key or disk failure)
+    throw err;
+  }
 }
 
 /**
