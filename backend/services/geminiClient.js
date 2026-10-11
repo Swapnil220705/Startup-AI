@@ -13,19 +13,19 @@ const DEFAULT_CONFIG = {
 
 /**
  * Determines if an error from Gemini/Axios is transient and safe to retry.
- * 
+ *
  * Transient errors include:
  * - HTTP 429 (Rate Limit / Quota Exceeded)
  * - HTTP 408 (Request Timeout)
  * - HTTP 500, 502, 503, 504 (Server / Gateway Overload)
  * - Network failures (ECONNRESET, ETIMEDOUT, ECONNABORTED, socket hang up)
- * 
+ *
  * Non-transient errors include:
  * - HTTP 400 (Bad Request / Invalid Schema)
  * - HTTP 401 (Unauthorized / Invalid Key)
  * - HTTP 403 (Forbidden / Project Access Denied)
  * - HTTP 404 (Not Found / Invalid Endpoint)
- * 
+ *
  * @param {Error} error - Caught error from Axios
  * @returns {boolean} True if error is transient
  */
@@ -72,7 +72,7 @@ function isTransientError(error) {
 
 /**
  * Calculates exponential backoff delay with proportional jitter.
- * 
+ *
  * @param {number} attempt - Current retry attempt number (1-indexed)
  * @param {number} baseDelayMs - Base delay in milliseconds
  * @param {number} maxDelayMs - Maximum delay ceiling
@@ -91,7 +91,7 @@ function calculateBackoffDelay(attempt, baseDelayMs, maxDelayMs, randomFn = Math
 
 /**
  * Extracts and parses Retry-After header from an error response if present.
- * 
+ *
  * @param {Error} error - Caught Axios error
  * @param {number} maxDelayMs - Maximum delay ceiling
  * @returns {number|null} Milliseconds to delay, or null if header absent/invalid
@@ -159,7 +159,64 @@ const defaultLimiter = new ConcurrencyLimiter(DEFAULT_CONFIG.maxConcurrent);
 
 /**
  * Centralized Gemini request dispatcher with timeout, retry/backoff, and concurrency limiting.
- * 
+ *
+ * @param {string} prompt - Prompt text to send to Gemini
+ * @param {object} options - Optional configuration overrides (useful for testing and tuning)
+/**
+ * Strips any embedded key query parameter from the given URL.
+ * Ensures API keys are never transmitted or logged in the URL query string.
+ *
+ * @param {string} rawUrl
+ * @returns {string} Sanitized URL
+ */
+function stripApiKeyFromUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return rawUrl;
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.searchParams.has('key')) {
+      parsed.searchParams.delete('key');
+      return parsed.toString();
+    }
+    return rawUrl;
+  } catch {
+    return rawUrl.replace(/[?&]key=[^&]+/, '').replace(/\?$/, '');
+  }
+}
+
+/**
+ * Redacts sensitive API keys from an error object, its message, URL, and headers.
+ *
+ * @param {Error} error
+ * @param {string} apiKey
+ * @returns {Error} Sanitized error
+ */
+function redactSensitiveData(error, apiKey) {
+  if (!error) return error;
+  if (apiKey && typeof apiKey === 'string' && apiKey.trim()) {
+    const keyToRedact = apiKey.trim();
+    if (error.message && typeof error.message === 'string' && error.message.includes(keyToRedact)) {
+      error.message = error.message.replaceAll(keyToRedact, '[REDACTED_API_KEY]');
+    }
+    if (error.config) {
+      if (error.config.url && typeof error.config.url === 'string' && error.config.url.includes(keyToRedact)) {
+        error.config.url = error.config.url.replaceAll(keyToRedact, '[REDACTED_API_KEY]');
+      }
+      if (error.config.headers) {
+        if (error.config.headers['x-goog-api-key']) {
+          error.config.headers['x-goog-api-key'] = '[REDACTED_API_KEY]';
+        }
+        if (error.config.headers['X-Goog-Api-Key']) {
+          error.config.headers['X-Goog-Api-Key'] = '[REDACTED_API_KEY]';
+        }
+      }
+    }
+  }
+  return error;
+}
+
+/**
+ * Centralized Gemini request dispatcher with timeout, retry/backoff, and concurrency limiting.
+ *
  * @param {string} prompt - Prompt text to send to Gemini
  * @param {object} options - Optional configuration overrides (useful for testing and tuning)
  * @returns {Promise<string>} Raw text candidate from Gemini response
@@ -183,21 +240,29 @@ async function callGemini(prompt, options = {}) {
 
     for (let attempt = 1; attempt <= config.maxRetries + 1; attempt++) {
       try {
+        const headers = {
+          'Content-Type': 'application/json',
+        };
+        if (config.apiKey) {
+          headers['x-goog-api-key'] = config.apiKey;
+        }
+
+        const requestUrl = stripApiKeyFromUrl(config.modelUrl);
+
         const response = await axios.post(
-          `${config.modelUrl}?key=${config.apiKey}`,
+          requestUrl,
           {
             contents: [{ parts: [{ text: prompt }] }],
           },
           {
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers,
             timeout: config.timeoutMs,
           }
         );
 
         return response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
       } catch (err) {
+        redactSensitiveData(err, config.apiKey);
         lastError = err;
         const isTransient = isTransientError(err);
         const hasRetriesLeft = attempt <= config.maxRetries;
@@ -239,4 +304,6 @@ module.exports = {
   getRetryAfterDelayMs,
   ConcurrencyLimiter,
   DEFAULT_CONFIG,
+  stripApiKeyFromUrl,
+  redactSensitiveData,
 };

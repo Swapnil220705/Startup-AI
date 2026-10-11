@@ -381,14 +381,56 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ---
 
+## 7.15 Completed in Current Chunk (Chunk 6.2) — Security Hardening, Rate Limiting & API Key Protection
+
+- [x] **HTTP Security Headers (`backend/middleware/securityHeaders.js` & `backend/index.js`)**:
+  - Integrated `helmet` into the Express middleware pipeline before CORS and route registration.
+  - Configured `contentSecurityPolicy: false` on the API backend to prevent header bloat and avoid interfering with third-party OAuth popup windows, deferring DOM script security to the static host.
+  - Set `crossOriginResourcePolicy: { policy: 'cross-origin' }` to explicitly allow cross-origin API data consumption from the React SPA.
+  - Set `crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }` to ensure Google Sign-In popup dialogs operate smoothly.
+  - Configured HSTS (`Strict-Transport-Security`) to be enabled only when explicitly instructed (`ENABLE_HSTS=true` or in production with `HTTPS=true`), preventing broken HTTP development on localhost.
+  - Standard headers enforced: `nosniff`, `SAMEORIGIN` framing, `noopen` downloads, `none` cross-domain policies.
+- [x] **Authentication Rate Limiting (`backend/middleware/rateLimiter.js` & `backend/routes/auth.js`)**:
+  - Implemented `createAuthLimiter` with an initial policy of **10 requests per 15 minutes** per client IP.
+  - Attached to public auth endpoints: `POST /api/auth/login`, `POST /api/auth/signup`, `POST /api/auth/google`.
+  - Exempted session inspection (`GET /api/auth/me`) and session logout (`POST /api/auth/logout`) to prevent locking out legitimate authenticated users.
+  - Returns structured HTTP 429 response with `{ success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many authentication attempts. Please try again later.' } }`.
+  - Zero password, credential, or token leakage in logs or responses.
+- [x] **AI Generation Rate Limiting (`backend/middleware/rateLimiter.js` & All 6 Generation Routes)**:
+  - Implemented `createAiGenerationLimiter` with an initial policy of **5 requests per 10 minutes** per client IP per endpoint.
+  - Attached to all 6 generation endpoints: `/api/lean-canvas`, `/api/mvp`, `/api/revenue`, `/api/pitch`, `/api/personas`, `/api/competitors`.
+  - Executes *before* controller logic and LLM dispatch, preventing expensive upstream Gemini API calls when rate-limited.
+  - Compatible with concurrent multi-module generation: parallel intake submission executes 1 call across each distinct module without cross-module collisions. Up to 5 full plans can be generated per 10-minute window.
+  - Returns structured HTTP 429 response with `{ success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many AI generation requests. Please wait a few minutes before trying again.' } }`.
+  - Documented in-memory store limitations (`MemoryStore` resets on server restart; multi-instance clusters require Redis-backed stores).
+- [x] **Public Shared Link Protection (`backend/middleware/rateLimiter.js` & `backend/routes/shared.js`)**:
+  - Attached `createSharedPlanLimiter` (60 requests per 1 minute per client IP) to `GET /api/shared/:token`.
+  - Mitigates automated scraping floods and prevents unconstrained SQLite write amplification on `view_count` increments.
+  - Preserves legitimate viewer access and token validation contracts without database schema changes.
+- [x] **Reverse Proxy & Header Spoofing Protection**:
+  - Express leaves `trust proxy` disabled (`false`) by default unless `TRUST_PROXY` environment variable is explicitly provided.
+  - Untrusted client headers (`X-Forwarded-For`) cannot spoof client identity to bypass IP rate limits.
+  - Suppressed spurious validation warnings via `validate: { xForwardedForHeader: false }`.
+- [x] **Gemini API Key Header Transition & Error Redaction (`backend/services/geminiClient.js`)**:
+  - Moved Google Generative Language REST API key transmission from the URL query string (`?key=...`) to the standard `x-goog-api-key: <KEY>` request header.
+  - Added `stripApiKeyFromUrl` to sanitize any legacy or embedded key parameters from configured URLs.
+  - Added `redactSensitiveData` to scrub API key values from `error.message`, `error.config.url`, and `error.config.headers` before re-throwing or logging.
+  - Preserved model selection (`gemini-3.8-flash`), request schemas, exponential backoff with jitter, retry headers, and error classification.
+- [x] **Comprehensive Test Verification**:
+  - Created `backend/tests/securityAndRateLimiting.test.js`: 8 test scenarios covering security headers, HSTS configuration, auth 429 limits, AI generation limiter pre-flight halt, parallel 6-module generation compatibility, public share limiter, proxy spoofing rejection, and Gemini header/redaction contracts.
+  - Full backend test suite passing cleanly (20/20 test suites).
+  - Full frontend test suite passing cleanly (12/12 suites, 93/93 tests).
+  - Frontend production build compiling cleanly with zero errors.
+
+---
+
 ## 8. Next Planned Phase & Chunk
 
 **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
-- **Chunk 6.2 — Security Hardening & Rate Limiting**:
-  - Install and configure `helmet` in Express for standard HTTP security headers (`CSP`, `nosniff`, `X-Frame-Options`, `HSTS`).
-  - Install `express-rate-limit` and configure IP rate limiters for auth endpoints (`/api/auth/login`, `/api/auth/signup`) and AI generation endpoints (`/api/lean-canvas`, `/api/mvp`, etc.).
-  - Switch `geminiClient.js` from URL query parameter (`?key=...`) to `x-goog-api-key` header.
-  - Debounce/throttle view count updates on `GET /api/shared/:token`.
+- **Chunk 6.3 — Pre-Flight Trial Check & AI Quota Protection**:
+  - Implement server-side pre-flight verification on intake submission to reject exhausted anonymous trial requests *before* firing the 6 expensive Gemini generation endpoints.
+  - Add client-side pre-check guard in `IdeaInputPage.js`.
+  - Add focused backend and frontend trial-guard tests.
 
 ---
 
@@ -428,8 +470,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Corrective Chunk 5.6B.1: Financial Formula Semantics and Bundle Optimization (Completed - `f4bc1f4`)
 - **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
   - Chunk 6.0: Production Readiness & Deployment Audit (Completed - `d7c15be`)
-  - Chunk 6.1: Production Environment, Scripts & Health Check Hardening (Completed)
-  - Chunk 6.2: Security Hardening & Rate Limiting (Planned)
+  - Chunk 6.1: Production Environment, Scripts & Health Check Hardening (Completed - `8a96b30`)
+  - Chunk 6.2: Security Hardening & Rate Limiting (Completed)
   - Chunk 6.3: Pre-Flight Trial Check & AI Quota Protection (Planned)
   - Chunk 6.4: CI/CD Pipeline & Dependency Cleanup (Planned)
 
@@ -438,13 +480,13 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `d7c15be` (docs: audit production readiness)
+- **Pre-Chunk Commit**: `8a96b30` (fix: harden production startup and health checks)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
 - **Phase 4 Status**: COMPLETED
 - **Phase 5 Status**: COMPLETED
-- **Phase 6 Status**: IN PROGRESS (Chunk 6.1 Completed)
+- **Phase 6 Status**: IN PROGRESS (Chunk 6.2 Completed)
 
 ---
 
@@ -452,8 +494,9 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 | Verification Check | Result | Details |
 |---|---|---|
-| **Health & Shutdown Suite (7 tests)** | PASS | `backend/tests/healthEndpoints.test.js`: 7 tests verifying: 1) Liveness probe unit contract (`GET /health`), 2) Readiness probe unit contract with active database (`GET /ready`), 3) Readiness probe returns 503 during graceful shutdown (`status: 'not_ready', database: 'shutting_down'`), 4) Readiness probe returns 503 when database is closed or faulty, 5) Graceful shutdown execution order (`server.close` before `closeDatabase`) and signal deduplication, 6) Real HTTP request testing across `/health`, `/ready`, `/api/health`, `/api/ready` with 200 OK responses, and 7) Information leakage inspection verifying zero secret, path, or query leakage. |
-| **Backend Test Suite (19 suites)** | PASS | `npm test` in `backend` runs all 19 test suites cleanly with 0 errors across 210+ assertions (including `healthEndpoints.test.js`, controllers, data flow, MVP storage, routes, E2E generation, JSON parser, Gemini client, partial generation, persistence, frontend persistence integration, plan history, reopen plan, plan lifecycle, auth endpoints, plan authorization, plan sharing, share recovery, share concurrency). |
+| **Security & Rate Limiting Suite (8 scenarios)** | PASS | `backend/tests/securityAndRateLimiting.test.js`: 8 tests verifying: 1) Helmet security headers, CORP cross-origin, CSP disabled on API, and safe HSTS default, 2) Explicit HSTS enablement contract, 3) Auth rate limiter enforcing 10 req/15 min limit with HTTP 429 schema and /me exemption, 4) AI generation limiter pre-flight halt before Gemini execution, 5) Parallel 6-module concurrent generation compatibility, 6) Public shared plan rate limiter protecting view counts and DB, 7) Header spoofing rejection when trust proxy is off, and 8) Gemini API key transmitted via `x-goog-api-key` header, stripped from URLs, and redacted from error objects. |
+| **Backend Test Suite (20 suites)** | PASS | `npm test` in `backend` runs all 20 test suites cleanly with 0 errors across 220+ assertions (including `securityAndRateLimiting.test.js`, `healthEndpoints.test.js`, controllers, data flow, MVP storage, routes, E2E generation, JSON parser, Gemini client, partial generation, persistence, frontend persistence integration, plan history, reopen plan, plan lifecycle, auth endpoints, plan authorization, plan sharing, share recovery, share concurrency). |
+| **Health & Shutdown Suite (7 tests)** | PASS | `backend/tests/healthEndpoints.test.js`: 7 tests verifying liveness (200), readiness (200), 503 on shutdown, 503 on disconnected DB, graceful shutdown execution order, real HTTP health probes, and zero secret/path leakage. |
 | **Production Start Script Verification** | PASS | `npm start --prefix backend` boots the server cleanly using `node index.js`, logs database connection and migration status, and responds immediately to live HTTP health probes on port 4000. |
 | **SPA Deep-Link Fallback Build Output** | PASS | `npm run build` copies `frontend/public/_redirects` to `frontend/build/_redirects` (`/* /index.html 200`) for static host deep-link routing refresh safety. |
 | **Full Frontend Test Suite (12 suites, 93 tests)** | PASS | `npm test -- --watchAll=false src` runs all 12 frontend test suites cleanly (93/93 tests pass) with 0 regressions. |

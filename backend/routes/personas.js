@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { generatePersonas } = require('../controllers/personaController');
+const { createAiGenerationLimiter } = require('../middleware/rateLimiter');
 
-router.post('/', generatePersonas);
+const personaLimiter = createAiGenerationLimiter();
+
+router.post('/', personaLimiter, generatePersonas);
 
 module.exports = router;

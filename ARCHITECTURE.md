@@ -1599,5 +1599,70 @@ The client-side router (`frontend/src/utils/Router.js`) uses HTML5 History API (
 ### 16.4 Environment Variables & Secrets Separation
 
 - **Backend Secrets (`backend/.env`)**: `GEMINI_API_KEY`, `SHARE_ENCRYPTION_KEY` (never committed; excluded via `.gitignore`).
-- **Backend Configuration**: `PORT`, `NODE_ENV`, `FRONTEND_ORIGIN`, `DATABASE_PATH`, `GOOGLE_CLIENT_ID`.
+- **Backend Configuration**: `PORT`, `NODE_ENV`, `FRONTEND_ORIGIN`, `DATABASE_PATH`, `GOOGLE_CLIENT_ID`, `TRUST_PROXY`, `ENABLE_HSTS`.
 - **Frontend Configuration (`frontend/.env.example`)**: `REACT_APP_API_BASE_URL`, `REACT_APP_GOOGLE_CLIENT_ID` (safe public parameters embedded into the static bundle).
+
+---
+
+## 17. API Security Hardening, Rate Limiting & Secret Hygiene (Chunk 6.2)
+
+### 17.1 Middleware Ordering Architecture (`backend/index.js`)
+
+To guarantee security defense-in-depth while avoiding denial-of-service on operational monitors, Express middlewares are evaluated in the following strict order:
+
+```mermaid
+flowchart TD
+    Req[Incoming HTTP Request] --> TP[1. Reverse Proxy Resolution<br>app.set trust proxy]
+    TP --> SH[2. HTTP Security Headers<br>Helmet Middleware]
+    SH --> CORS[3. Cross-Origin Resource Sharing<br>CORS Configuration]
+    CORS --> Parser[4. Body Parser<br>express.json]
+    Parser --> Health[5. Health & Readiness Probes<br>/health & /ready - Exempt from Rate Limits]
+    Health --> AuthMW[6. Session Token Identification<br>authenticateUser - Non-blocking]
+    AuthMW --> RouteLimiters[7. Rate-Limited Endpoints]
+
+    subgraph RouteLimiters [Route Rate Limiting Layer]
+        RL_Auth[Auth Limiter<br>10 req/15 min/IP<br>/api/auth/login, /signup, /google]
+        RL_AI[AI Generation Limiter<br>5 req/10 min/IP per module<br>/api/lean-canvas, /mvp, etc.]
+        RL_Share[Public Share Limiter<br>60 req/min/IP<br>/api/shared/:token]
+    end
+
+    RouteLimiters --> Handlers[8. Core Controllers & Database / Gemini Execution]
+```
+
+### 17.2 HTTP Security Headers (`backend/middleware/securityHeaders.js`)
+
+Startup-AI uses `helmet` tailored for an API backend serving a decoupled Single Page Application:
+- **`contentSecurityPolicy: false`**: The backend produces REST JSON payloads, not HTML documents. Content Security Policy for browser DOM execution is enforced on the frontend static host (Netlify, Cloudflare Pages, or Nginx). Disabling CSP on API responses avoids redundant header size and prevents interference with third-party authentication popup windows.
+- **`crossOriginResourcePolicy: { policy: 'cross-origin' }`**: Explicitly permits cross-origin API data consumption from the frontend React client.
+- **`crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }`**: Guarantees that Google OAuth sign-in popups are not blocked by the opener context.
+- **`hsts`**: HTTP Strict Transport Security is conditionally enabled (`process.env.ENABLE_HSTS === 'true'` or in production when `process.env.HTTPS === 'true'`). It is omitted by default in local HTTP development to prevent permanent HTTPS caching on `localhost`.
+- **Protective Headers**: `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `X-Download-Options: noopen`, `X-Permitted-Cross-Domain-Policies: none`.
+
+### 17.3 Rate Limiting Policies (`backend/middleware/rateLimiter.js`)
+
+Startup-AI implements three dedicated rate limiting policies using `express-rate-limit` with Draft-8 standard headers (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`):
+
+| Scope | Protected Endpoints | Limit Policy | Client Key | HTTP 429 Payload |
+|---|---|---|---|---|
+| **Authentication** | `POST /api/auth/login`<br>`POST /api/auth/signup`<br>`POST /api/auth/google` | 10 requests / 15 minutes | Client IP | `{ success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many authentication attempts. Please try again later.' } }` |
+| **AI Generation** | `POST /api/lean-canvas`<br>`POST /api/mvp`<br>`POST /api/revenue`<br>`POST /api/pitch`<br>`POST /api/personas`<br>`POST /api/competitors` | 5 requests / 10 minutes (per endpoint) | Client IP | `{ success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many AI generation requests. Please wait a few minutes before trying again.' } }` |
+| **Public Plan Sharing** | `GET /api/shared/:token` | 60 requests / 1 minute | Client IP | `{ success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests for shared plans. Please try again shortly.' } }` |
+
+#### Architectural Protections & Limitations:
+1. **Pre-Execution Halt**: AI rate limiters execute before calling the controller or Gemini client. Exceeded requests never trigger expensive LLM inference.
+2. **Parallel Generation Compatibility**: Plan generation triggers all 6 modules simultaneously (`Promise.allSettled`). Because rate limiting is isolated per endpoint, full plan generation consumes 1 quota unit on each endpoint without cross-module collisions. A client can generate up to 5 full plans every 10 minutes.
+3. **In-Memory Storage (`MemoryStore`)**: Quota counters reside in Node.js process memory.
+   - *Restart Behavior*: Process restarts reset in-memory counters.
+   - *Horizontal Scaling*: Multiple backend instances do not share state. For multi-node deployments, a distributed store (e.g. `rate-limit-redis`) must be plugged into `createAuthLimiter({ store })` and `createAiGenerationLimiter({ store })`.
+4. **Billing / Quota Scope**: IP rate limiting mitigates automated floods and brute-force attacks; it does not replace authenticated account-level billing or persistent quota enforcement.
+
+### 17.4 Reverse Proxy & Header Spoofing Protection
+
+- **Default Untrusted Mode**: When `TRUST_PROXY` is not defined in the environment, Express leaves `trust proxy` disabled (`false`). In this state, `req.ip` is extracted directly from the underlying TCP socket (`req.socket.remoteAddress`). Attackers cannot bypass IP rate limits by rotating `X-Forwarded-For` headers.
+- **Configured Reverse Proxy**: In environments running behind a reverse proxy (e.g., Nginx, AWS ALB, Cloudflare), operators must explicitly set `TRUST_PROXY=1` (or the appropriate CIDR / hop count) in `backend/.env`.
+
+### 17.5 Gemini API Key Protection & Secret Hygiene (`backend/services/geminiClient.js`)
+
+1. **Header-Based Authentication**: Google Generative Language REST requests pass the API key exclusively via the `x-goog-api-key: <KEY>` request header.
+2. **URL Query Sanitization**: The request URL does not include `?key=<KEY>`. `stripApiKeyFromUrl` automatically removes any legacy or embedded key query parameters from configured URLs.
+3. **Error Redaction (`redactSensitiveData`)**: Caught errors and re-thrown exceptions are sanitized: the API key string is replaced with `[REDACTED_API_KEY]` across `error.message`, `error.config.url`, and `error.config.headers['x-goog-api-key']`.

@@ -17,7 +17,28 @@ try {
 
 const app = express();
 
+// Proxy configuration: Do not blindly enable trust proxy.
+// Untrusted forwarded headers can undermine IP-based rate limiting.
+// Enable only when explicitly configured for a trusted reverse proxy environment.
+if (process.env.TRUST_PROXY) {
+  const tp = process.env.TRUST_PROXY;
+  if (tp === 'true') {
+    app.set('trust proxy', true);
+  } else if (tp === 'false') {
+    app.set('trust proxy', false);
+  } else if (!isNaN(tp)) {
+    app.set('trust proxy', parseInt(tp, 10));
+  } else {
+    app.set('trust proxy', tp);
+  }
+}
+
+// HTTP security headers (Helmet configured for API backend)
+const { securityHeaders } = require('./middleware/securityHeaders');
+app.use(securityHeaders);
+
 const configuredOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:3000';
+
 app.use(cors({
   origin: (origin, callback) => {
     // Allow non-browser requests (tools, curl, server-to-server tests)
