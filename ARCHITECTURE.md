@@ -1,6 +1,6 @@
 # Startup-AI Architecture Documentation
 
-This document describes the verified architecture and technical flow of the Startup-AI application as of Chunk 3.1.
+This document describes the verified architecture and technical flow of the Startup-AI application as of Phase 6.0.
 
 ---
 

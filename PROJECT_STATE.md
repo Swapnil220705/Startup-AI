@@ -67,11 +67,11 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ## 6. Current Status
 
-- **Phase**: Phase 5 — Pitch Deck Export & Sharing
-- **Current Chunk**: Corrective Chunk 5.6B.1 — Financial Formula Semantics and Bundle Optimization
-- **Status**: Completed
-- **Phase 5 Status**: COMPLETED (Chunks 5.1–5.5, Corrective Chunk 5.5.1, Chunk 5.6A Audit, Chunk 5.6B Export & Corrective Chunk 5.6B.1 Completed)
-- **Next Planned Chunk**: Phase 6 — Production Hardening, Test Suite Modernization & CI/CD
+- **Phase**: Phase 6 — Production Readiness, Deployment & Hardening
+- **Current Chunk**: Chunk 6.0 — Production Readiness & Deployment Audit
+- **Status**: Completed (Audit Only)
+- **Phase 5 Status**: COMPLETED
+- **Next Planned Chunk**: Chunk 6.1 — Production Environment, Scripts & Health Check Hardening
 
 ---
 
@@ -310,11 +310,48 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ---
 
+## 7.13 Completed in Current Chunk (Chunk 6.0) — Production Readiness & Deployment Audit
+
+- [x] **Executive Verdict**: **Ready After Fixes**
+  - Robust core architecture and data flows verified.
+  - Zero test failures across 18 backend suites and 12 frontend suites (93 frontend tests).
+  - Production build compiles cleanly with optimal bundle code splitting (124.18 kB gzipped initial bundle; 256.73 kB gzipped on-demand Excel chunk).
+  - Critical deployment and security blockers identified and prioritized into actionable chunks.
+- [x] **Security & Authentication Findings**:
+  - **Verified Strengths**: Strong scrypt password hashing (`crypto.scryptSync(password, salt, 64)`), timing-safe password verification (`crypto.timingSafeEqual`), 256-bit cryptographically secure session tokens, strict HTTP-only/SameSite=Lax/Secure cookies, automatic expired session cleanup, and owner-only authorization guards across private plans, historical listings, trial claims, and share controls. Public share response strictly sanitizes owner credentials, emails, session IDs, internal DB row IDs, and generation errors.
+  - **Critical Blocker**: The 6 AI generation endpoints (`/api/lean-canvas`, `/api/mvp`, `/api/revenue`, `/api/pitch`, `/api/personas`, `/api/competitors`) have zero authentication and zero rate limiting or IP throttling, exposing the backend to denial-of-service and unconstrained Gemini API quota exhaustion.
+  - **High Blocker**: Authentication endpoints (`/api/auth/login`, `/api/auth/signup`) lack rate limiting or brute-force throttling (`express-rate-limit` is not installed).
+  - **High Blocker**: Express server lacks standard HTTP security headers (`helmet` is not installed; missing `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `X-Frame-Options`, `Strict-Transport-Security`).
+  - **Medium Risks**: Gemini API key is passed via URL query parameter (`?key=...`) rather than `x-goog-api-key` header; public share view count increments unthrottled on every GET request (`UPDATE plan_shares SET view_count = view_count + 1 WHERE id = ?`).
+- [x] **Database & Persistence Findings**:
+  - **Verified Strengths**: SQLite database initialized with `better-sqlite3`, WAL mode enabled, foreign keys enforced (`PRAGMA foreign_keys = ON`), and 5 sequential schema migrations executed atomically inside database transactions.
+  - **Critical Deployment Blocker**: By default, SQLite stores data in `backend/data/startup_ai.db`. Deploying to standard containerized PaaS platforms with ephemeral disks (Render Web Services without Disks, Heroku, AWS App Runner, Cloud Run, Vercel Serverless) results in total database loss on container restart, redeploy, or auto-scaling.
+  - **Operational Requirements**: Deployment requires an attached persistent block volume (`DATABASE_PATH=/data/startup_ai.db`) on a single-node host (e.g. Render Persistent Disk, Railway Volume, Fly.io Volume, or VPS), or a future migration to managed PostgreSQL for horizontal multi-instance scaling. Automated backups/replication (e.g. Litestream streaming SQLite WAL to S3/R2) are currently absent.
+- [x] **AI Generation & Reliability Findings**:
+  - **Verified Strengths**: Centralized client (`backend/services/geminiClient.js`) implements 30s timeout, transient error retries (429, 503, network errors) with exponential backoff and jitter, Retry-After header parsing, in-process concurrency limiting (`maxConcurrent = 2`), robust JSON parsing (handling code fences, BOM, markdown wrappers), and clean partial plan persistence.
+  - **High Risk**: On `IdeaInputPage.js`, all 6 AI modules are executed *before* checking if an anonymous trial user has already exhausted their 1-plan limit. If already exhausted, the generation still executes and incurs upstream costs before `POST /api/plans` returns HTTP 403 `TRIAL_LIMIT_REACHED`.
+- [x] **Frontend & Export Findings**:
+  - **Verified Strengths**: Production build (`npm run build`) compiles cleanly without compilation errors; initial bundle optimized at 124.18 kB gzipped; `exceljs` lazy-loads on demand (256.73 kB gzipped chunk); dynamic import failures display user-friendly toast; double-submit debouncing prevents concurrent export jobs; PDF print views use zero external libraries with native CSS `@page` sizing; OpenXML workbook generation sanitizes formula injection (CWE-1236).
+  - **High Blocker**: SPA client-side routing (`Router.js`) lacks server rewrite rules (`_redirects` / Nginx `try_files`). Direct browser navigation or refresh on deep links (`/share/:token`, `/dashboard`, `/my-plans`, `/pitch-preview`) returns HTTP 404 on static hosts.
+  - **Configuration Gaps**: Missing `frontend/.env.example` documenting `REACT_APP_API_BASE_URL` and `REACT_APP_GOOGLE_CLIENT_ID`. Root `.gitignore` ignores `.env.*.local` but does not ignore `/frontend/.env`.
+  - **Dead Dependencies**: `react-router-dom` in `frontend/package.json` and `openai` in `backend/package.json` are installed but unused anywhere in active code.
+- [x] **Deployment & Operations Findings**:
+  - **Critical Blocker**: `backend/package.json` lacks `"start": "node index.js"` script (causes immediate boot failure on standard PaaS environments).
+  - **High Blocker**: Express application lacks a `/health` or `/api/health` liveness probe endpoint required by container orchestrators and load balancers.
+  - **Medium Risk**: Server lacks graceful shutdown handlers (`SIGTERM`/`SIGINT`) to finish in-flight requests and cleanly close the SQLite database.
+
+---
+
 ## 8. Next Planned Phase & Chunk
 
 **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
-- Modernize React 19 test harness and package dependencies.
-- Production environment configurations and CI/CD pipelines.
+- **Chunk 6.1 — Production Environment, Scripts & Health Check Hardening**:
+  - Add `"start": "node index.js"` in `backend/package.json`.
+  - Add `/health` liveness probe endpoint in `backend/index.js` with database connectivity check.
+  - Add graceful process shutdown (`SIGTERM`/`SIGINT`) closing SQLite connections cleanly.
+  - Create `frontend/.env.example` documenting `REACT_APP_API_BASE_URL` and `REACT_APP_GOOGLE_CLIENT_ID`.
+  - Add SPA fallback rewrite (`frontend/public/_redirects`) for single-page routing refresh safety.
+  - Update `.gitignore` to prevent committing `/frontend/.env` and any files in `backend/keys/`.
 
 ---
 
@@ -342,7 +379,7 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 4.2: Database Migration 002, User Model & Core Backend Auth Endpoints (Completed)
   - Chunk 4.3: Plan Ownership, Multi-User Isolation & Plan Claiming API (Completed)
   - Chunk 4.4: Frontend Auth UX, Google Sign-In & Dashboard Claim Flow (Completed - `9439267`)
-- **Phase 5: Pitch Deck Export & Sharing (COMPLETED)**
+- **Phase 5: Pitch Deck Export & Sharing (COMPLETED - Commit `f4bc1f4`)**
   - Chunk 5.1: Export & Sharing Architecture Audit (Completed - `6f07fa3`)
   - Chunk 5.2: Pitch Deck & Business Plan PDF Export Engine (Completed - `af6e47b`)
   - Chunk 5.3: Plan Sharing Database Foundation & Backend API (Completed - `15aa3ed`)
@@ -351,20 +388,26 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Corrective Chunk 5.5.1: Enforce One Active Share Per Plan (Completed - `fcea8f1`)
   - Chunk 5.6A: Financial Model Export: Architecture Audit Only (Completed - `81e5a3b`)
   - Chunk 5.6B: Financial Model XLSX Export Engine & UI Integration (Completed - `eb40b2c`)
-  - Corrective Chunk 5.6B.1: Financial Formula Semantics and Bundle Optimization (Completed)
+  - Corrective Chunk 5.6B.1: Financial Formula Semantics and Bundle Optimization (Completed - `f4bc1f4`)
 - **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
+  - Chunk 6.0: Production Readiness & Deployment Audit (Completed - Audit Only)
+  - Chunk 6.1: Production Environment, Scripts & Health Check Hardening (Planned)
+  - Chunk 6.2: Security Hardening & Rate Limiting (Planned)
+  - Chunk 6.3: Pre-Flight Trial Check & AI Quota Protection (Planned)
+  - Chunk 6.4: CI/CD Pipeline & Dependency Cleanup (Planned)
 
 ---
 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `eb40b2c` (feat: add financial model xlsx export)
+- **Pre-Chunk Commit**: `f4bc1f4` (fix: clarify financial model formulas and loading)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
 - **Phase 4 Status**: COMPLETED
 - **Phase 5 Status**: COMPLETED
+- **Phase 6 Status**: IN PROGRESS (Chunk 6.0 Audit Completed)
 
 ---
 
@@ -372,7 +415,10 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 | Verification Check | Result | Details |
 |---|---|---|
-| **Financial Model Formula Semantics & Assumptions (17 tests)** | PASS | `frontend/src/utils/financialExportHelpers.test.js`: 17 tests verifying: 1) dual-format revenue normalization, 2) growth opportunities, 3) missing/partial fallbacks, 4) 4 worksheets, 5) text cell types, 6) interactive starter formula templates, 7) illustrative disclaimer labels, 8) gross margin zero-revenue guard (`=IF(O9>0,O16/O9,0)`), 9) filename sanitization, 10) Blob download invocation, 11) CWE-1236 escaping, 12) 31-char sheet names, 13) monthly transactions assumption and Row 7 formula, 14) fixed processing fees multiplying Row 7 transaction count, 15) ending active customers `=N6`, 16) annual revenue/costs reconciliations, and 17) Month 12 cumulative profit `=N20`. |
+| **Phase 6.0 Backend Test Suite (18 suites)** | PASS | `npm test` in `backend` runs all 18 test suites cleanly with 0 failures across 200+ assertions (controllers, data flow, MVP storage, routes, E2E generation, JSON parser, Gemini client, partial generation, persistence, frontend persistence integration, plan history, reopen plan, plan lifecycle, auth endpoints, plan authorization, plan sharing, share recovery, share concurrency). |
+| **Phase 6.0 Frontend Test Suite (12 suites, 93 tests)** | PASS | `npm test -- --watchAll=false src` runs all 12 frontend test suites cleanly (93/93 tests pass) with 0 regressions across auth, share modal, export views, financial helpers, history, dashboard, API client, and shared plan page. |
+| **Phase 6.0 Frontend Production Build & Code Splitting** | PASS | `npm run build` compiled cleanly. Initial bundle optimized at 124.18 kB gzipped. Asynchronous `exceljs` chunk code-split to 256.73 kB gzipped (`223.1018c41a.chunk.js`). |
+| **Production Readiness & Deployment Audit Complete** | PASS | Full codebase audit completed covering Security/Auth, Database/Persistence, AI Reliability, Frontend/Exports, and Deployment/Operations. Executive verdict: Ready After Fixes. Remediation roadmap established. |
 | **Dynamic Import & ExportViews Interactions (10 tests)** | PASS | `frontend/src/components/ExportViews.test.js`: 10 tests verifying: 1) Pitch deck print trigger, 2) Business plan PDF print trigger, 3) Pitch deck navigation from Export tab, 4) Business plan print trigger from Export tab, 5) Share modal trigger, 6) Financial model active export with loading/success feedback, 7) Disabled financial export when plan is absent, 8) "Coming Soon" card for unsupported features, 9) dynamic import failure user-friendly error toast, and 10) duplicate export click prevention while in-flight. |
 | **Full Frontend Test Suite (12 suites, 93 tests)** | PASS | `CI=true npm test -- --watchAll=false src`: 12 test suites, 93 tests run cleanly with 0 failures across all components, pages, utils, and export flows. |
 | **Frontend Production Build Code Splitting** | PASS | `npm run build` compiled cleanly. Initial bundle reduced from 385.86 kB to 124.18 kB gzipped (-68%). ExcelJS code-split into on-demand chunk `223.1018c41a.chunk.js` (256.73 kB gzipped). |
