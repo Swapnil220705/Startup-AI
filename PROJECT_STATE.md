@@ -68,10 +68,10 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 5 — Pitch Deck Export & Sharing
-- **Current Chunk**: Chunk 5.5 — Dashboard & Pitch Preview Share Management UX
+- **Current Chunk**: Chunk 5.6A — Financial Model Export: Architecture Audit Only
 - **Status**: Completed
-- **Phase 5 Status**: COMPLETED (Chunks 5.1, 5.2, 5.3, 5.4 & 5.5 Completed)
-- **Next Planned Chunk**: Phase 6 — Production Hardening, Test Suite Modernization & CI/CD
+- **Phase 5 Status**: IN PROGRESS (Chunks 5.1–5.5 Completed; Chunk 5.6A Audit Completed; Chunk 5.6B Export Implementation Pending)
+- **Next Planned Chunk**: Chunk 5.6B — Financial Model XLSX Export Engine & UI Integration
 
 ---
 
@@ -305,12 +305,14 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 4.2: Database Migration 002, User Model & Core Backend Auth Endpoints (Completed)
   - Chunk 4.3: Plan Ownership, Multi-User Isolation & Plan Claiming API (Completed)
   - Chunk 4.4: Frontend Auth UX, Google Sign-In & Dashboard Claim Flow (Completed - `9439267`)
-- **Phase 5: Pitch Deck Export & Sharing (COMPLETED - Commit pending)**
+- **Phase 5: Pitch Deck Export & Sharing (IN PROGRESS)**
   - Chunk 5.1: Export & Sharing Architecture Audit (Completed - `6f07fa3`)
   - Chunk 5.2: Pitch Deck & Business Plan PDF Export Engine (Completed - `af6e47b`)
   - Chunk 5.3: Plan Sharing Database Foundation & Backend API (Completed - `15aa3ed`)
   - Chunk 5.4: Public Shareable Presentation Page & Viral Growth UX (Completed - `0cadc42`)
-  - Chunk 5.5: Dashboard & Pitch Preview Share Management UX (COMPLETED)
+  - Chunk 5.5: Dashboard & Pitch Preview Share Management UX (Completed - `d98cd8c`)
+  - Chunk 5.6A: Financial Model Export: Architecture Audit Only (COMPLETED)
+  - Chunk 5.6B: Financial Model XLSX Export Engine & UI Integration (PENDING)
 - **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
 
 ---
@@ -318,12 +320,12 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `0cadc42` (feat: add public shared plan presentation page)
+- **Pre-Chunk Commit**: `d98cd8c` (feat: add secure share management UX)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
 - **Phase 4 Status**: COMPLETED
-- **Phase 5 Status**: COMPLETED (Chunks 5.1, 5.2, 5.3, 5.4 & 5.5 Completed)
+- **Phase 5 Status**: IN PROGRESS (Chunks 5.1–5.5 & 5.6A Completed; 5.6B Pending)
 
 ---
 
@@ -331,6 +333,7 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 | Verification Check | Result | Details |
 |---|---|---|
+| **Financial Model Export Architecture Audit (Phase 5.6A)** | PASS | Comprehensive audit of existing financial data availability across `backend/models/revenueModel.js`, `leanCanvas.js`, `IdeaInputPage.js`, and `exportHelpers.js`. Confirmed application stores qualitative monetization strategies and cost drivers, with zero discrete numerical prices, line items, or multi-year time-series forecasts. Evaluated CSV vs XLSX vs PDF; recommended 4-sheet formula-driven XLSX model adhering to the non-fabrication principle. Audited Phase 5.5 AES-256-GCM sharing security and identified concurrency transaction recommendation. |
 | **Phase 5.5 Share Recovery & Management Suite (12 tests)** | PASS | `backend/tests/planShareRecovery.test.js`: 12 comprehensive tests covering: 1) new share creation persists hash and AES-256-GCM ciphertext without plaintext fallback, 2) reopening sharing recovers existing URL identically, 3) non-mutating status query, 4) AES-256-GCM authenticated encryption/decryption, 5) wrong key/corrupted tag safe failure, 6) legacy share requires replacement while keeping old link active, 7) atomic replacement invalidates old URL and generates fresh active link, 8) revocation and subsequent link creation, 9) anonymous/non-owner isolation (401/404), 10) missing encryption key throws without plaintext fallback, 11) HTTP controller contracts (GET, POST, DELETE), and 12) public DTO strict exclusion of encryption/owner fields. |
 | **Phase 5.5 ShareModal Frontend Suite (11 tests)** | PASS | `frontend/src/components/ShareModal.test.js`: 11 tests verifying requirements 14–24: authenticated owner modal open, anonymous trial sign-in prompt, share creation displaying URL, copy link success with clipboard and fallback, existing active URL recovery without duplicate creation, legacy link requiring explicit replacement confirmation, revocation confirmation dialog and server confirmation, network error retry CTA, plan switching state reset, and ExportTab PDF export functionality preservation. |
 | **Backend Test Suite (17 suites)** | PASS | `npm test` in `backend` runs all 17 test suites cleanly with 0 errors across 190+ assertions, including both `tests/planSharing.test.js` and `tests/planShareRecovery.test.js`. |

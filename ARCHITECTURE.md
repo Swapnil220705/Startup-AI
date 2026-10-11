@@ -1242,4 +1242,154 @@ Implemented in `frontend/src/components/ShareModal.js`:
 - **Public DTO Sanitization**: Neither `share_token` (hash) nor `encrypted_token` (ciphertext/nonce/tag) is ever returned in public or owner responses.
 - **Cryptographic Entropy**: Raw tokens generated via `crypto.randomBytes(32).toString('hex')` (256 bits of entropy).
 
+---
+
+## 14. Financial Model Export Architecture Audit (Phase 5.6A)
+
+### 14.1 Objective & Context
+
+The `ExportTab` component currently features a placeholder card for **Financial Model** ("Excel spreadsheet with financial projections") marked with a "Coming Soon" badge. The objective of Phase 5.6A is an architecture audit to:
+1. Assess the availability, granularity, and structure of financial and monetization data currently generated and persisted by Startup-AI.
+2. Evaluate export formats (CSV, XLSX, PDF) across usability, formula support, application compatibility, dependency overhead, and security.
+3. Define a safe, non-hallucinatory implementation design that delivers high utility to founders without fabricating artificial numbers.
+4. Verify the security design of Phase 5.5 authenticated token encryption and sharing link replacement.
+
+---
+
+### 14.2 Assessment of Existing Generated & Persisted Data
+
+A thorough inspection of `backend/models/revenueModel.js`, `backend/models/leanCanvas.js`, `frontend/src/pages/IdeaInputPage.js`, `frontend/src/utils/exportHelpers.js`, and the SQLite database schema reveals the following:
+
+#### A. Actual Generated Data Fields
+| Source Module | Field Name | Data Type | Content Description |
+|---|---|---|---|
+| **Revenue Model** (`/api/revenue`) | `revenueStreams` | Text (string) | Qualitative explanation of 1–2 monetization methods (e.g. SaaS subscription, freemium, usage-based). |
+| **Revenue Model** (`/api/revenue`) | `pricingStrategy` | Text (string) | High-level pricing approach (e.g., tiered pricing, value-based pricing). |
+| **Revenue Model** (`/api/revenue`) | `expectedMonthlyRevenue` | Text (string) | Qualitative projection range with contributing factors (e.g. "$5K - $10K depending on CAC and conversion"). |
+| **Revenue Model** (`/api/revenue`) | `growthOpportunities` | Text (string) | Bullet points or narrative on long-term expansion vectors. |
+| **Lean Canvas** (`/api/lean-canvas`) | `costStructure` | Text (string) | Narrative summary of primary cost drivers (e.g., cloud hosting, developer salaries, acquisition). |
+| **Lean Canvas** (`/api/lean-canvas`) | `keyMetrics` | Text (string) | Quantifiable performance and growth metrics (e.g., MRR, churn rate, LTV:CAC). |
+| **Lean Canvas** (`/api/lean-canvas`) | `channels` | Text (string) | Marketing, sales, and distribution pathways. |
+| **Lean Canvas** (`/api/lean-canvas`) | `customerSegments` | Text (string) | Target customer profiles and initial early adopters. |
+| **MVP Generator** (`/api/mvp`) | `launchTimeline` | Text (string) | Estimated build and launch timeline (e.g. "6-8 weeks"). |
+| **Overview** (`formData` / `plans`) | `startupName`, `industry`, `problem`, `solution`, `usp` | Text (string) | Foundational startup context. |
+
+#### B. Frontend Storage Discrepancy
+In `frontend/src/pages/IdeaInputPage.js` (lines 97–108), the raw `resData` from `/api/revenue` is reshaped into an array:
+```javascript
+[
+  { model: "Primary Revenue Stream", description: resData.revenueStreams, projection: resData.expectedMonthlyRevenue },
+  { model: "Pricing Strategy", description: resData.pricingStrategy, projection: "Growth Phase" }
+]
+```
+This drops `growthOpportunities` from client storage, and hardcodes `projection: "Growth Phase"` for the second item. Additionally, `DashboardTabs.js` (lines 455–468) displays static mock cards (`$10K Initial Target`, `$50K 6 Month Goal`, `$200K Year 1 Target`) that are hardcoded JSX elements rather than dynamic data.
+
+#### C. Data That Does NOT Exist in the Application
+- **Zero numerical line items**: No discrete unit prices (e.g., $29, $99), discrete customer quantities, or monthly transaction volumes.
+- **Zero cost numbers**: No numerical salaries, headcount schedules, server costs, payment processing fees, or marketing budgets.
+- **Zero time-series financial projections**: No Month 1–12 or Year 1–5 cash flow, balance sheet, or P&L tables.
+- **Zero unit economics**: No numerical CAC, LTV, payback period, churn rate, or gross margin percentages.
+
+#### D. Non-Fabrication Principle
+Attempting to output an auto-generated 5-year multi-scenario financial model would require fabricating ~95% of the quantitative figures. Doing so would violate the project's reliability and trust requirements. Instead, the exported spreadsheet must serve as:
+1. An **Audited Strategy & Assumptions Summary** containing all actual AI-generated business model decisions.
+2. A **Formula-Driven 12-Month Projections Starter Model** where standard startup financial formulas are pre-wired, and founders can plug in their own target price and monthly user estimates without inventing figures.
+
+---
+
+### 14.3 Export Format Evaluation
+
+| Evaluation Criteria | CSV (Comma-Separated) | XLSX (OpenXML Spreadsheet) | PDF (Native Print) |
+|---|---|---|---|
+| **Multi-Sheet Structure** | ❌ No. Single flat table only. Mashing narrative strategy and formulas into one table produces messy output. | ✅ Excellent. Supports distinct worksheets for Assumptions, Revenue Strategy, Cost Drivers, and 12-Month Projections. | ⚠️ Multi-page, but non-editable. |
+| **Formulas & Interactivity** | ❌ None. Plain text values only. | ✅ Native formulas (`=SUM()`, `=B5*C5`, `=(B10-B11)/B10`) auto-calculate in Excel, Sheets, and Numbers. | ❌ None. Static presentation only. |
+| **Formatting & Readability** | ❌ No column widths, bold headers, colors, or cell wrapping. Multiline AI text is awkward. | ✅ Full control over column widths, cell wrapping, currency formats (`$#,##0`), and section headers. | ✅ High visual polish (already implemented in Phase 5.2). |
+| **Dependency Cost** | ✅ Zero dependencies (native browser `Blob`). | ⚠️ Requires lightweight client-side generator or small library. | ✅ Zero dependencies (native `window.print()`). |
+| **Security (Formula Injection)** | ⚠️ Vulnerable to CSV/DDE injection (CWE-1236) if cells start with `=`, `+`, `-`, `@`. | ⚠️ Same formula injection risk; must escape AI strings by writing as explicit text cells or prefixing `'`. | ✅ Immune to formula injection. |
+| **Product Alignment** | ⚠️ Disappoints user expecting "Excel spreadsheet with financial projections". | ✅ Exactly matches UI promise in `ExportTab`. | ❌ Redundant with existing Business Plan PDF export. |
+
+**Primary Recommendation: XLSX Format**
+XLSX is the clear winner because a financial model is inherently a spreadsheet deliverable. Founders need to open the file in Excel or Google Sheets, review their AI-generated revenue strategy, and adjust numbers to see live calculations.
+
+---
+
+### 14.4 Recommended Implementation Architecture (Multi-Sheet XLSX)
+
+The exported workbook should contain 4 cleanly organized sheets:
+
+#### Sheet 1: `Executive Overview & Assumptions`
+- **Metadata**: Startup Name, Industry, Generation Date, Plan ID.
+- **Strategic Summary**: Elevator Pitch, Problem, Solution, Unique Selling Proposition.
+- **Financial Baseline**: Launch Timeline (`mvp.launchTimeline`), Customer Segments (`leanCanvas.customerSegments`), Primary Channels (`leanCanvas.channels`).
+
+#### Sheet 2: `Monetization & Revenue Strategy`
+- **Primary Revenue Stream**: Extracted from `revenue.revenueStreams` (or `revenue[0].description`).
+- **Pricing Strategy**: Extracted from `revenue.pricingStrategy` (or `revenue[1].description`).
+- **Target Revenue Benchmark**: Extracted from `revenue.expectedMonthlyRevenue` (or `revenue[0].projection`).
+- **Growth Opportunities**: Extracted from `revenue.growthOpportunities` (with fallback to `leanCanvas.revenueStreams`).
+
+#### Sheet 3: `Cost Structure & Operational Drivers`
+- **Cost Drivers**: Categorized breakdown of `leanCanvas.costStructure` (Infrastructure, People, Acquisition, Operations).
+- **Key Metrics to Track**: Extracted from `leanCanvas.keyMetrics` (e.g. MRR, CAC, Churn, Retention).
+- **Core MVP Scope**: List of MVP features (`mvp.coreFeatures`) indicating initial engineering cost drivers.
+
+#### Sheet 4: `12-Month Financial Projections (Working Model)`
+A pre-wired, interactive formula table with Months 1 through 12 across columns:
+- **Revenue Drivers (User Inputs)**:
+  - Average Price per Customer / Subscription ($) `[Input cell: Default $49]`
+  - Starting Customers / Active Accounts `[Input cell: Default 10]`
+  - Monthly Growth Rate (%) `[Input cell: Default 15%]`
+- **Calculated Revenue (Formulas)**:
+  - Active Accounts = `Prior Month * (1 + Growth Rate)`
+  - Gross Revenue = `Active Accounts * Price`
+- **Cost Drivers (Formulas & Inputs)**:
+  - Hosting & Infrastructure Cost (Base + $0.50/user)
+  - Payment Processing Fees (`=Gross Revenue * 2.9% + $0.30/txn`)
+  - Marketing & Customer Acquisition Budget
+- **Summary Metrics (Formulas)**:
+  - Total Monthly Expenses = `=SUM(Expenses)`
+  - Net Profit / Monthly Burn = `=Gross Revenue - Total Expenses`
+  - Cumulative 12-Month Net Total = `=SUM(B25:M25)`
+
+#### Formula Injection Mitigation (CWE-1236)
+All text cells populated from user inputs or AI model outputs MUST be sanitized before insertion into the XML/worksheet structure:
+If a string begins with `=`, `+`, `-`, `@`, `\t`, or `\r`, prepend a single quote `'` or force cell data type to string (`t="inlineStr"` or `t="s"`).
+
+---
+
+### 14.5 Verification of Phase 5.5 Sharing Security Design
+
+A comprehensive inspection of the Phase 5.5 implementation confirms:
+
+1. **Fail-Safe Encryption Configuration**:
+   - `backend/utils/encryption.js` verifies `process.env.SHARE_ENCRYPTION_KEY` is a 32-byte secret (64-character hex).
+   - If missing or invalid, `encryptToken` throws an explicit error and *never* falls back to plaintext.
+   - `planShareController.js` catches missing key errors and maps them to HTTP 500 `{ success: false, error: { code: 'ENCRYPTION_CONFIGURATION_ERROR' } }`.
+   - Covered by deterministic test in `backend/tests/planShareRecovery.test.js` (Test 10).
+
+2. **Zero Secret Leakage**:
+   - Neither `share_token` (SHA-256 hash) nor `encrypted_token` (AES-256-GCM ciphertext) is ever included in public DTOs (`toPublicSharedPlan`) or owner share status responses.
+   - Public endpoint `GET /api/shared/:token` strips owner ID, user ID, and internal database IDs.
+   - Controller error logging prints `error.message` only, never logging tokens or token-bearing URLs.
+
+3. **Concurrency & One-Active-Share Guarantee**:
+   - **Link Replacement (`replace: true`)**: Wrapped in `dbInstance.transaction(() => { ... })`. Executes serially, revoking prior active links before inserting replacement.
+   - **Initial Share Creation (`replace: false`)**:
+     *Finding*: In `planShareService.js`, the check for existing share and the subsequent insert are currently separate statements outside an explicit transaction, and `plan_shares` does not have a partial unique index on `(plan_id) WHERE is_active = 1`. In high-concurrency environments, two concurrent initial share requests could theoretically both pass the select and insert active rows.
+     *Recommendation*: Wrap initial share creation in `dbInstance.transaction(...)` or add `CREATE UNIQUE INDEX idx_plan_shares_one_active ON plan_shares(plan_id) WHERE is_active = 1;`.
+
+4. **Key Persistence Requirements**:
+   - `SHARE_ENCRYPTION_KEY` must remain persistent in the host environment. If rotated or lost, existing links remain active publicly (via SHA-256 hash lookup), but authenticated owners will be prompted with `requiresReplacement: true` to generate a fresh recoverable link upon reopening the share modal.
+
+---
+
+### 14.6 Proposed Phased Implementation Plan
+
+- **Chunk 5.6A (Current)**: Architecture Audit, data availability verification, format comparison, and security review. (COMPLETED)
+- **Chunk 5.6B (Future)**: Financial Model Export Engine Implementation:
+  - Helper `frontend/src/utils/financialExportHelpers.js`: Workbook builder, formula generator, CWE-1236 sanitizer, and file downloader (`[StartupName]-Financial-Model.xlsx`).
+  - Update `ExportTab` in `DashboardTabs.js`: Replace "Coming Soon" badge with an active "Export Excel" action button.
+  - Comprehensive unit and integration tests verifying workbook structure, formulas, and sanitization.
+
+
 
