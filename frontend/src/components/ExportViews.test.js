@@ -1,9 +1,10 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import PitchDeckPrintView from './PitchDeckPrintView';
 import BusinessPlanPrintView from './BusinessPlanPrintView';
 import { ExportTab } from './DashboardTabs';
 import * as exportHelpers from '../utils/exportHelpers';
+import * as financialExportHelpers from '../utils/financialExportHelpers';
 
 describe('Print Views and Export UI', () => {
   const mockPlan = {
@@ -105,10 +106,53 @@ describe('Print Views and Export UI', () => {
     render(<ExportTab data={mockPlan} navigate={jest.fn()} isDark={false} />);
 
     const comingSoonBadges = screen.getAllByText(/Coming Soon/i);
-    expect(comingSoonBadges.length).toBe(1); // Financial Model (Share Link implemented in Phase 5.5)
+    expect(comingSoonBadges.length).toBe(1); // Genuinely unsupported feature (Cap Table & Equity)
 
     const unavailableButtons = screen.getAllByRole('button', { name: /Unavailable/i });
     expect(unavailableButtons.length).toBe(1);
     unavailableButtons.forEach(btn => expect(btn).toBeDisabled());
+  });
+
+  test('ExportTab renders active Financial Model action and invokes financial exporter', async () => {
+    const spyExport = jest.spyOn(financialExportHelpers, 'exportFinancialModelXlsx').mockResolvedValue({ success: true });
+    render(<ExportTab data={mockPlan} navigate={jest.fn()} isDark={false} />);
+
+    expect(screen.getByText(/Financial Model/i)).toBeInTheDocument();
+    expect(screen.getByText(/Interactive Spreadsheet/i)).toBeInTheDocument();
+
+    const exportBtn = screen.getByRole('button', { name: /Export Excel/i });
+    expect(exportBtn).not.toBeDisabled();
+
+    await act(async () => {
+      fireEvent.click(exportBtn);
+    });
+
+    expect(spyExport).toHaveBeenCalledWith(mockPlan);
+    spyExport.mockRestore();
+  });
+
+  test('ExportTab disables Financial Model export button when plan data is missing', () => {
+    render(<ExportTab data={null} navigate={jest.fn()} isDark={false} />);
+
+    const exportBtn = screen.getByRole('button', { name: /Export Excel/i });
+    expect(exportBtn).toBeDisabled();
+    expect(exportBtn).toHaveAttribute('title', 'No plan data available to export');
+  });
+
+  test('ExportTab displays user-facing error message when workbook export fails', async () => {
+    const spyConsole = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const spyExport = jest.spyOn(financialExportHelpers, 'exportFinancialModelXlsx').mockRejectedValue(new Error('Memory allocation failure'));
+    render(<ExportTab data={mockPlan} navigate={jest.fn()} isDark={false} />);
+
+    const exportBtn = screen.getByRole('button', { name: /Export Excel/i });
+    await act(async () => {
+      fireEvent.click(exportBtn);
+    });
+
+    const errorAlert = await screen.findByText(/Memory allocation failure/i);
+    expect(errorAlert).toBeInTheDocument();
+
+    spyExport.mockRestore();
+    spyConsole.mockRestore();
   });
 });

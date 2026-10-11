@@ -39,9 +39,11 @@ import {
   ChevronDown,
   Play,
   Pause,
-  RotateCcw
+  RotateCcw,
+  RefreshCw
 } from 'lucide-react';
 import { normalizePlanData, triggerPrintWithTitle } from '../utils/exportHelpers';
+import { exportFinancialModelXlsx } from '../utils/financialExportHelpers';
 
 export const OverviewTab = ({ data, isDark }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -728,6 +730,9 @@ export const PersonasTab = ({ data, isDark }) => {
 
 export const ExportTab = ({ data, navigate, isDark, onOpenShare }) => {
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingFinancial, setIsExportingFinancial] = useState(false);
+  const [financialExportError, setFinancialExportError] = useState(null);
+  const [financialExportSuccess, setFinancialExportSuccess] = useState(false);
   
   const handleExportBusinessPlan = () => {
     setIsExporting(true);
@@ -737,6 +742,28 @@ export const ExportTab = ({ data, navigate, isDark, onOpenShare }) => {
     setTimeout(() => {
       setIsExporting(false);
     }, 500);
+  };
+
+  const handleExportFinancialModel = async () => {
+    if (!data) return;
+    if (isExportingFinancial) return;
+
+    setIsExportingFinancial(true);
+    setFinancialExportError(null);
+    setFinancialExportSuccess(false);
+
+    try {
+      await exportFinancialModelXlsx(data);
+      setFinancialExportSuccess(true);
+      setTimeout(() => {
+        setFinancialExportSuccess(false);
+      }, 3500);
+    } catch (err) {
+      console.error('[ExportTab] Failed to export financial model:', err);
+      setFinancialExportError(err?.message || 'Failed to generate Financial Model spreadsheet.');
+    } finally {
+      setIsExportingFinancial(false);
+    }
   };
 
   const handleNavigatePitchDeck = () => {
@@ -844,22 +871,53 @@ export const ExportTab = ({ data, navigate, isDark, onOpenShare }) => {
       </div>
 
       {/* Additional Export Options */}
-      <div className="grid md:grid-cols-3 gap-6">
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Financial Excel */}
-        <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg transition-all duration-300 text-center opacity-75`}>
+        <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg hover:shadow-xl transition-all duration-300 text-center`}>
           <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl flex items-center justify-center mx-auto mb-4">
             <BarChart3 className="w-6 h-6 text-white" />
           </div>
-          <div className="inline-block px-2 py-0.5 mb-2 rounded-full text-xs font-semibold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
-            Coming Soon
+          <div className="inline-block px-2 py-0.5 mb-2 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
+            Interactive Spreadsheet
           </div>
           <h4 className="font-semibold mb-2">Financial Model</h4>
           <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} mb-4`}>
-            Excel spreadsheet with financial projections
+            12-month formula-driven Excel model (.xlsx) with editable assumptions
           </p>
-          <button disabled className="text-gray-400 font-medium text-sm flex items-center justify-center space-x-1 mx-auto cursor-not-allowed">
-            <Download className="w-4 h-4" />
-            <span>Unavailable</span>
+
+          {financialExportError && (
+            <div className="mb-3 p-2 text-xs rounded-lg bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-300">
+              {financialExportError}
+            </div>
+          )}
+
+          <button 
+            type="button"
+            onClick={handleExportFinancialModel}
+            disabled={!data || isExportingFinancial}
+            className={`font-medium text-sm flex items-center justify-center space-x-1 mx-auto transition-colors ${
+              !data || isExportingFinancial
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-green-600 hover:text-green-700 dark:text-green-400 hover:underline cursor-pointer'
+            }`}
+            title={!data ? 'No plan data available to export' : 'Download 12-month financial model spreadsheet'}
+          >
+            {isExportingFinancial ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Generating Excel...</span>
+              </>
+            ) : financialExportSuccess ? (
+              <>
+                <CheckCircle className="w-4 h-4 text-green-500" />
+                <span>Downloaded!</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" />
+                <span>Export Excel</span>
+              </>
+            )}
           </button>
         </div>
 
@@ -876,8 +934,9 @@ export const ExportTab = ({ data, navigate, isDark, onOpenShare }) => {
             Included in the comprehensive Business Plan PDF
           </p>
           <button 
+            type="button"
             onClick={handleExportBusinessPlan} 
-            className="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 font-medium text-sm flex items-center justify-center space-x-1 mx-auto"
+            className="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 font-medium text-sm flex items-center justify-center space-x-1 mx-auto hover:underline cursor-pointer"
           >
             <Download className="w-4 h-4" />
             <span>Export in PDF</span>
@@ -903,6 +962,24 @@ export const ExportTab = ({ data, navigate, isDark, onOpenShare }) => {
           >
             <Globe className="w-4 h-4" />
             <span>Manage Link</span>
+          </button>
+        </div>
+
+        {/* Cap Table & Equity (Unsupported / Coming Soon) */}
+        <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg transition-all duration-300 text-center opacity-75`}>
+          <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <PieChart className="w-6 h-6 text-white" />
+          </div>
+          <div className="inline-block px-2 py-0.5 mb-2 rounded-full text-xs font-semibold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+            Coming Soon
+          </div>
+          <h4 className="font-semibold mb-2">Cap Table & Equity</h4>
+          <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} mb-4`}>
+            Multi-round equity dilution and investor ownership model
+          </p>
+          <button disabled className="text-gray-400 font-medium text-sm flex items-center justify-center space-x-1 mx-auto cursor-not-allowed">
+            <Download className="w-4 h-4" />
+            <span>Unavailable</span>
           </button>
         </div>
       </div>

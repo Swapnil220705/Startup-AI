@@ -1406,10 +1406,132 @@ A comprehensive inspection of the Phase 5.5 implementation confirms:
 ### 14.6 Proposed Phased Implementation Plan
 
 - **Chunk 5.6A (Current)**: Architecture Audit, data availability verification, format comparison, and security review. (COMPLETED)
-- **Chunk 5.6B (Future)**: Financial Model Export Engine Implementation:
+- **Chunk 5.6B (Future)**: Financial Model Export Engine Implementation: (COMPLETED)
   - Helper `frontend/src/utils/financialExportHelpers.js`: Workbook builder, formula generator, CWE-1236 sanitizer, and file downloader (`[StartupName]-Financial-Model.xlsx`).
   - Update `ExportTab` in `DashboardTabs.js`: Replace "Coming Soon" badge with an active "Export Excel" action button.
   - Comprehensive unit and integration tests verifying workbook structure, formulas, and sanitization.
+
+---
+
+## 15. Financial Model XLSX Export Engine (Phase 5.6B Implementation)
+
+### 15.1 Architectural Objectives & Library Selection
+
+Phase 5.6B implements the client-side Financial Model export feature, replacing the placeholder in `DashboardTabs.js` with an active OpenXML (`.xlsx`) workbook generator.
+
+#### Library Decision: `exceljs` (^4.4.0)
+- **Zero Server Overhead**: Generates workbooks directly in the user's browser as in-memory ArrayBuffers converted to downloadable Blobs (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`).
+- **Complete OpenXML & Formula Support**: Full fidelity for multi-sheet workbooks, native cell formulas (`=SUM()`, `=IF()`, cell references across sheets), number formatting (`$#,##0.00`, `0.0%`), column styling, and auto-wrapped text cells.
+- **MIT License & Webpack Compatibility**: Pure JavaScript library compatible with the existing React 19 / CRA build pipeline.
+- **Why Alternatives Were Rejected**:
+  - *`xlsx` (SheetJS Community)*: Free tier disables formula computation write styles and has legacy licensing ambiguities.
+  - *Server-Side Generation*: Would introduce server compute load, temporary file storage risks, and unnecessary backend endpoints for data already loaded in the client session.
+  - *CSV Export*: Inability to support multi-sheet structures, formulas, number formats, or styled headers.
+
+---
+
+### 15.2 Four-Worksheet Workbook Architecture
+
+The generated workbook organizes strategic qualitative data and dynamic quantitative projections across 4 dedicated worksheets:
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                      Startup-AI Financial Model Workbook                │
+├────────────────────────────────┬───────────────────────────────────────┤
+│ Sheet 1: Executive Overview    │ • Startup intake metadata & context   │
+│          & Assumptions         │ • Editable Model Assumptions (B20:B27)│
+├────────────────────────────────┼───────────────────────────────────────┤
+│ Sheet 2: Monetization &        │ • Normalized revenue narrative        │
+│          Revenue Strategy      │ • Pricing model, benchmarks & growth  │
+├────────────────────────────────┼───────────────────────────────────────┤
+│ Sheet 3: Cost Structure &      │ • Lean Canvas cost driver categories  │
+│          Operational Drivers   │ • Key metrics & MVP feature scope     │
+├────────────────────────────────┼───────────────────────────────────────┤
+│ Sheet 4: 12-Month Projections  │ • Interactive formula-driven model    │
+│          (Working Model)       │ • Dynamically wired to Sheet 1 inputs │
+│                                │ • Prominently marked as illustrative  │
+└────────────────────────────────┴───────────────────────────────────────┘
+```
+
+#### 1. Sheet 1: `Executive Overview & Assumptions`
+- **Metadata**: Startup Name, Industry/Domain, Generation Date, and Plan ID.
+- **Foundational Strategy**: Elevator Pitch, Problem Statement, Solution, and Unique Selling Proposition.
+- **OpenXML 31-Character Worksheet Name Limit**:
+  - The OpenXML standard strictly caps worksheet tab names at 31 characters.
+  - `Executive Overview & Assumptions` (32 chars) is truncated to `Executive Overview & Assumption` (31 chars) by ExcelJS.
+  - Formulas in Sheet 4 dynamically reference `'${wsOverview.name}'!$B$20` to guarantee reference integrity without `#REF!` errors.
+  - `generateFinancialModelWorkbook` wraps `workbook.getWorksheet` to seamlessly match both the full and truncated tab names.
+- **Editable Baseline Assumptions Table (`B20:B27`)**:
+  - `B20`: Average Revenue per User / Sub (ARPU) — Default `$49.00` (`$#,##0.00`)
+  - `B21`: Starting Active Customers — Default `10` (`#,##0`)
+  - `B22`: Monthly Customer Growth Rate — Default `15.0%` (`0.0%`)
+  - `B23`: Base Infrastructure Cost / Month — Default `$100.00` (`$#,##0.00`)
+  - `B24`: Variable Infrastructure / Active User — Default `$1.50` (`$#,##0.00`)
+  - `B25`: Payment Processing Rate — Default `2.9%` (`0.0%`)
+  - `B26`: Payment Processing Fixed Fee / Txn — Default `$0.30` (`$#,##0.00`)
+  - `B27`: Monthly Fixed Operating Expenses — Default `$500.00` (`$#,##0.00`)
+
+#### 2. Sheet 2: `Monetization & Revenue Strategy`
+- Preserves the AI-generated qualitative revenue narrative and pricing models without data loss or modification.
+- **Dual Schema Normalization**:
+  - Supports both the frontend array representation (`[ { model, description, projection } ]`) and the backend object representation (`{ revenueStreams, pricingStrategy, expectedMonthlyRevenue, growthOpportunities }`).
+  - Gracefully falls back to `leanCanvas.revenueStreams` if the revenue module is partially populated.
+  - Preserves `growthOpportunities` in full.
+
+#### 3. Sheet 3: `Cost Structure & Operational Drivers`
+- Categorizes Lean Canvas `costStructure` into actionable buckets (Infrastructure, People, Acquisition, Operations).
+- Outlines `keyMetrics` (e.g. MRR, CAC, Churn) and lists core MVP features from `mvp.coreFeatures` as direct engineering drivers.
+
+#### 4. Sheet 4: `12-Month Working Model`
+- Provides an interactive 12-month projection matrix (Months 1–12 across Columns C through N).
+- **Application-Authored Formula Engine**:
+  - **Active Customers**: Month 1 references `='${wsOverview.name}'!$B$21`; Months 2–12 calculate `=C7*(1+'${wsOverview.name}'!$B$22)`.
+  - **Gross Revenue**: Calculates `=C7*'${wsOverview.name}'!$B$20`.
+  - **Cloud & Infrastructure Cost**: Calculates `='${wsOverview.name}'!$B$23+(C7*'${wsOverview.name}'!$B$24)`.
+  - **Payment Processing Fees**: Calculates `=(C8*'${wsOverview.name}'!$B$25)+(C7*'${wsOverview.name}'!$B$26)`.
+  - **Total COGS**: Sums `=C11+C12`.
+  - **Gross Profit**: Calculates `=C8-C13`.
+  - **Gross Margin %**: Employs guarded formula `=IF(C8>0,C15/C8,0)` to avoid `#DIV/0!` errors when revenue is zero.
+  - **Operating Expenses**: References `='${wsOverview.name}'!$B$27`.
+  - **Total Expenses**: Sums `=C13+C18`.
+  - **Net Operating Income (EBITDA)**: Calculates `=C8-C20`.
+  - **Cumulative Net Profit**: Month 1 `=C21`; Months 2–12 sum `=C23+D21`.
+  - **Annual Total Column (O)**: Sums revenue and costs via `=SUM(C8:N8)` and computes full-year gross margin.
+- **Prominent Illustrative Notice**: Clearly flags the model as an interactive starter template driven by Sheet 1 assumptions, ensuring founders understand that projections are formulaic models rather than AI guarantees.
+
+---
+
+### 15.3 Security Hardening & Formula Injection (CWE-1236) Protection
+
+All cell content populated from user inputs or AI model outputs is strictly sanitized prior to insertion:
+- **Formula Injection Mitigation**: Any string beginning with `=`, `+`, `-`, `@`, `\t`, or `\r` is escaped with a prepended single quote (`'`), preventing Excel or Google Sheets from interpreting malicious text as executable macro expressions or external commands.
+- **Path Traversal & Filename Sanitization**: The export filename is generated via `sanitizeExportFilename(startupName)`:
+  - Replaces all characters outside `[a-zA-Z0-9_-]` with hyphens (`-`).
+  - Strips leading/trailing hyphens and compresses multiple hyphens.
+  - Blocks directory traversal sequences (e.g. `../../etc/passwd` becomes `etc-passwd`).
+  - Truncates to a maximum of 50 characters and defaults to `Startup-AI-Financial-Model.xlsx`.
+
+---
+
+### 15.4 Defensive Handling of Partial / Missing Plan Data
+
+The export helper handles incomplete, partially generated, or malformed plans safely:
+- Safe optional chaining and fallback strings (`"Not specified"`, `"No data available"`).
+- Empty arrays or missing modules render clean empty-state tables without throwing JavaScript runtime errors.
+- Never fabricates fake quantitative numbers or treats mock UI cards as real data.
+
+---
+
+### 15.5 Dashboard Integration & State UX
+
+Integrated into `ExportTab` within `frontend/src/components/DashboardTabs.js`:
+- Replaces the "Coming Soon" badge on the Financial Model card with an active "Export Excel" action button.
+- Disabled when plan data is unavailable (`!data`).
+- Includes asynchronous state management: loading spinner ("Generating Excel..."), success confirmation ("Downloaded!"), and error alert handling.
+- Implements duplicate-click guard to prevent concurrent export jobs.
+- Preserves existing Business Plan PDF export, Pitch Deck navigation, and Share Link modal management completely untouched.
+- Introduces an explicit, genuinely unsupported 4th export card ("Cap Table & Equity") marked with a "Coming Soon" badge and disabled button to preserve user roadmap visibility.
+
 
 
 
