@@ -133,14 +133,48 @@ function createSharedPlanLimiter(overrides = {}) {
   });
 }
 
+/**
+ * Factory for Trial Status Check Rate Limiter.
+ * Targets: GET /api/plans/trial-status
+ * Policy: 60 requests per 1 minute per client IP.
+ *
+ * @param {object} [overrides]
+ * @returns {Function} Express rate-limit middleware
+ */
+function createTrialStatusLimiter(overrides = {}) {
+  const windowMs = overrides.windowMs !== undefined
+    ? overrides.windowMs
+    : (process.env.TRIAL_STATUS_RATE_LIMIT_WINDOW_MS ? parseInt(process.env.TRIAL_STATUS_RATE_LIMIT_WINDOW_MS, 10) : 60 * 1000);
+
+  const limit = overrides.limit !== undefined
+    ? overrides.limit
+    : overrides.max !== undefined
+      ? overrides.max
+      : (process.env.TRIAL_STATUS_RATE_LIMIT_MAX ? parseInt(process.env.TRIAL_STATUS_RATE_LIMIT_MAX, 10) : 60);
+
+  const message = overrides.message || 'Too many trial status checks. Please try again shortly.';
+
+  return rateLimit({
+    ...BASE_LIMITER_OPTIONS,
+    windowMs,
+    limit,
+    message,
+    handler: createRateLimitHandler(message),
+    ...overrides
+  });
+}
+
 const authLimiter = createAuthLimiter();
 const sharedPlanLimiter = createSharedPlanLimiter();
+const trialStatusLimiter = createTrialStatusLimiter();
 
 module.exports = {
   createAuthLimiter,
   createAiGenerationLimiter,
   createSharedPlanLimiter,
+  createTrialStatusLimiter,
   createRateLimitHandler,
   authLimiter,
-  sharedPlanLimiter
+  sharedPlanLimiter,
+  trialStatusLimiter
 };

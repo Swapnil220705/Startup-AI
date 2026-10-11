@@ -754,6 +754,74 @@ function claimPlan(planId, userId, trialToken, db = null) {
   return getPlanById(trimmedId, dbInstance);
 }
 
+/**
+ * Evaluates whether the requester is eligible to generate a plan under trial or authenticated rules.
+ * Non-mutating read-only query.
+ *
+ * Rules:
+ * - Authenticated user: allowed = true, authenticated = true, trialExhausted = false.
+ * - Anonymous with no cookie or unlinked trial session: allowed = true, authenticated = false, trialExhausted = false.
+ * - Anonymous with existing trial session that already has plan_id: allowed = false, authenticated = false, trialExhausted = true.
+ * - Anonymous with existing trial session that has plan_id = null: allowed = true, authenticated = false, trialExhausted = false.
+ *
+ * @param {string|null} trialToken
+ * @param {object|null} user
+ * @param {object|null} [db]
+ * @returns {object} { allowed: boolean, authenticated: boolean, trialExhausted: boolean, hasTrialSession: boolean, message: string }
+ */
+function checkTrialStatus(trialToken, user = null, db = null) {
+  if (user && user.id) {
+    return {
+      allowed: true,
+      authenticated: true,
+      trialExhausted: false,
+      hasTrialSession: false,
+      message: 'Authenticated user session active.'
+    };
+  }
+
+  if (!trialToken || typeof trialToken !== 'string' || !trialToken.trim()) {
+    return {
+      allowed: true,
+      authenticated: false,
+      trialExhausted: false,
+      hasTrialSession: false,
+      message: 'Anonymous free trial available.'
+    };
+  }
+
+  const dbInstance = getDb(db);
+  const trialRow = dbInstance.prepare('SELECT id, plan_id FROM trial_sessions WHERE id = ?').get(trialToken.trim());
+
+  if (!trialRow) {
+    return {
+      allowed: true,
+      authenticated: false,
+      trialExhausted: false,
+      hasTrialSession: false,
+      message: 'Anonymous free trial available.'
+    };
+  }
+
+  if (trialRow.plan_id) {
+    return {
+      allowed: false,
+      authenticated: false,
+      trialExhausted: true,
+      hasTrialSession: true,
+      message: 'Anonymous free trial has already been used. Please sign in or create an account to generate more plans.'
+    };
+  }
+
+  return {
+    allowed: true,
+    authenticated: false,
+    trialExhausted: false,
+    hasTrialSession: true,
+    message: 'Anonymous free trial available.'
+  };
+}
+
 module.exports = {
   TRIAL_COOKIE_NAME,
   TRIAL_COOKIE_TTL_MS,
@@ -764,6 +832,7 @@ module.exports = {
   getOrCreateTrialSession,
   createPlan,
   createTrialPlan,
+  checkTrialStatus,
   getPlanById,
   getPlanForRequester,
   listPlans,

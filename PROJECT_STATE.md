@@ -68,10 +68,10 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 6 — Production Readiness, Deployment & Hardening
-- **Current Chunk**: Chunk 6.1 — Production Environment, Scripts & Health Check Hardening
+- **Current Chunk**: Chunk 6.3 — Pre-Flight Trial Check & AI Quota Protection
 - **Status**: Completed
 - **Phase 5 Status**: COMPLETED
-- **Next Planned Chunk**: Chunk 6.2 — Security Hardening & Rate Limiting
+- **Next Planned Chunk**: Chunk 6.4 — CI/CD Pipeline & Dependency Cleanup
 
 ---
 
@@ -471,8 +471,8 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 - **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
   - Chunk 6.0: Production Readiness & Deployment Audit (Completed - `d7c15be`)
   - Chunk 6.1: Production Environment, Scripts & Health Check Hardening (Completed - `8a96b30`)
-  - Chunk 6.2: Security Hardening & Rate Limiting (Completed)
-  - Chunk 6.3: Pre-Flight Trial Check & AI Quota Protection (Planned)
+  - Chunk 6.2: Security Hardening & Rate Limiting (Completed - `028b8c1`)
+  - Chunk 6.3: Pre-Flight Trial Check & AI Quota Protection (Completed)
   - Chunk 6.4: CI/CD Pipeline & Dependency Cleanup (Planned)
 
 ---
@@ -480,13 +480,13 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `8a96b30` (fix: harden production startup and health checks)
+- **Pre-Chunk Commit**: `028b8c1` (fix: harden backend security headers, rate limiting, and api key hygiene)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
 - **Phase 4 Status**: COMPLETED
 - **Phase 5 Status**: COMPLETED
-- **Phase 6 Status**: IN PROGRESS (Chunk 6.2 Completed)
+- **Phase 6 Status**: IN PROGRESS (Chunk 6.3 Completed)
 
 ---
 
@@ -494,8 +494,12 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 | Verification Check | Result | Details |
 |---|---|---|
-| **Security & Rate Limiting Suite (8 scenarios)** | PASS | `backend/tests/securityAndRateLimiting.test.js`: 8 tests verifying: 1) Helmet security headers, CORP cross-origin, CSP disabled on API, and safe HSTS default, 2) Explicit HSTS enablement contract, 3) Auth rate limiter enforcing 10 req/15 min limit with HTTP 429 schema and /me exemption, 4) AI generation limiter pre-flight halt before Gemini execution, 5) Parallel 6-module concurrent generation compatibility, 6) Public shared plan rate limiter protecting view counts and DB, 7) Header spoofing rejection when trust proxy is off, and 8) Gemini API key transmitted via `x-goog-api-key` header, stripped from URLs, and redacted from error objects. |
-| **Backend Test Suite (20 suites)** | PASS | `npm test` in `backend` runs all 20 test suites cleanly with 0 errors across 220+ assertions (including `securityAndRateLimiting.test.js`, `healthEndpoints.test.js`, controllers, data flow, MVP storage, routes, E2E generation, JSON parser, Gemini client, partial generation, persistence, frontend persistence integration, plan history, reopen plan, plan lifecycle, auth endpoints, plan authorization, plan sharing, share recovery, share concurrency). |
+| **Pre-Flight Trial Check Backend Suite (9 tests)** | PASS | `backend/tests/trialStatusPreFlight.test.js`: 9 tests verifying: 1) first-time anonymous visitor trial available, 2) anonymous session with no plan trial available, 3) anonymous session with created plan trial exhausted, 4) malformed/invalid/missing tokens handled safely, 5) authenticated users bypass anonymous trial limits, 6) controller contract & hygiene (zero leaked secrets or plan content), 7) routing precedence (`/trial-status` mounted before `/:id`), 8) rate limiting via `trialStatusLimiter` (60 req/min per IP), and 9) server-side persistence enforcement invariant on `POST /api/plans`. |
+| **IdeaInputPage Pre-Flight Frontend Suite (5 tests)** | PASS | `frontend/src/pages/IdeaInputPage.test.js`: 5 tests verifying: 1) anonymous user with available trial dispatches 6 parallel AI requests and persists plan, 2) anonymous user with exhausted trial dispatches 0 AI requests, opens AuthModal, and preserves form values, 3) authenticated user bypasses trial check and generates directly, 4) pre-flight network error halts process, dispatches 0 AI calls, and displays retryable alert, and 5) duplicate submissions blocked while `isLoading` is true. |
+| **Backend Test Suite (21 suites)** | PASS | `npm test` in `backend` runs all 21 test suites cleanly with 0 errors across 230+ assertions (including `trialStatusPreFlight.test.js`, `securityAndRateLimiting.test.js`, `healthEndpoints.test.js`, etc.). |
+| **Full Frontend Test Suite (13 suites, 98 tests)** | PASS | `CI=true npm test -- --watchAll=false src` runs all 13 frontend test suites cleanly (98/98 tests pass) with 0 regressions. |
+| **Frontend Production Build** | PASS | `npm run build` compiles with 0 errors (`main.4715f943.js` at 124.39 kB gzipped, on-demand Excel chunk at 256.73 kB gzipped). |
+| **Security & Rate Limiting Suite (8 scenarios)** | PASS | `backend/tests/securityAndRateLimiting.test.js`: 8 tests verifying Helmet security headers, CORP, auth rate limiter (10 req/15 min), AI generation limiter, public share limiter, header spoofing rejection, and Gemini key protection. |
 | **Health & Shutdown Suite (7 tests)** | PASS | `backend/tests/healthEndpoints.test.js`: 7 tests verifying liveness (200), readiness (200), 503 on shutdown, 503 on disconnected DB, graceful shutdown execution order, real HTTP health probes, and zero secret/path leakage. |
 | **Production Start Script Verification** | PASS | `npm start --prefix backend` boots the server cleanly using `node index.js`, logs database connection and migration status, and responds immediately to live HTTP health probes on port 4000. |
 | **SPA Deep-Link Fallback Build Output** | PASS | `npm run build` copies `frontend/public/_redirects` to `frontend/build/_redirects` (`/* /index.html 200`) for static host deep-link routing refresh safety. |

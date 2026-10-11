@@ -4,6 +4,7 @@ const router = express.Router();
 const {
   createPlanController,
   getPlanByIdController,
+  getTrialStatusController,
   listPlansController,
   updatePlanController,
   deletePlanController,
@@ -15,10 +16,12 @@ const {
   revokeShareController
 } = require('../controllers/planShareController');
 const { requireAuth } = require('../middleware/auth');
+const { trialStatusLimiter } = require('../middleware/rateLimiter');
 
 // Plan Persistence & Multi-User Ownership Routes
 router.post('/', createPlanController);
 router.get('/', listPlansController);
+router.get('/trial-status', trialStatusLimiter, getTrialStatusController);
 router.post('/claim', requireAuth, claimPlanController);
 router.get('/:id/share', requireAuth, getShareStatusController);
 router.get('/:id', getPlanByIdController);

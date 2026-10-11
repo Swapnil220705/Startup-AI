@@ -1666,3 +1666,85 @@ Startup-AI implements three dedicated rate limiting policies using `express-rate
 1. **Header-Based Authentication**: Google Generative Language REST requests pass the API key exclusively via the `x-goog-api-key: <KEY>` request header.
 2. **URL Query Sanitization**: The request URL does not include `?key=<KEY>`. `stripApiKeyFromUrl` automatically removes any legacy or embedded key query parameters from configured URLs.
 3. **Error Redaction (`redactSensitiveData`)**: Caught errors and re-thrown exceptions are sanitized: the API key string is replaced with `[REDACTED_API_KEY]` across `error.message`, `error.config.url`, and `error.config.headers['x-goog-api-key']`.
+
+---
+
+## 18. Pre-Flight Trial Check & AI Quota Protection (Chunk 6.3)
+
+### 18.1 Architectural Context & Quota Optimization
+In previous chunks, anonymous users were allowed one free business plan trial. When an anonymous user attempted to create a second plan, the 6 AI endpoints (`/api/lean-canvas`, `/api/mvp`, etc.) were executed first, and trial consumption was only enforced when `POST /api/plans` was called to persist the generated plan. This caused up to 6 expensive, avoidable Gemini LLM calls to be dispatched for an anonymous user who was ineligible to persist the plan.
+
+Chunk 6.3 adds a lightweight pre-flight check before initiating parallel AI generation, while preserving all authoritative server-side trial limits as defense-in-depth.
+
+### 18.2 Backend Trial Status Endpoint (`GET /api/plans/trial-status`)
+- **Route Registration**: Registered in `backend/routes/plans.js` immediately before `router.get('/:id', ...)` to prevent Express from treating `'trial-status'` as an `:id` URL parameter.
+- **Rate Limiting**: Protected by `trialStatusLimiter` (60 requests / 1 minute per IP).
+- **Authoritative Data Source**: Evaluates SQLite `trial_sessions` table for the token stored in the `startup_ai_trial` HTTP-only cookie. If `trialRow.plan_id` is non-null, the trial is exhausted.
+- **Zero AI Invocation & Zero Mutations**: The check performs a single SQLite indexed lookup; it never invokes Gemini models or creates/updates records.
+- **Information Hygiene**: Leaks zero plan data, user IDs, or trial tokens.
+- **Response Contract**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "allowed": true,
+      "authenticated": false,
+      "trialExhausted": false,
+      "hasTrialSession": true,
+      "message": "Anonymous free trial available."
+    }
+  }
+  ```
+- **Session Matrix**:
+  | Requester State | `allowed` | `authenticated` | `trialExhausted` | Behavior |
+  |---|---|---|---|---|
+  | Authenticated Session (`req.user`) | `true` | `true` | `false` | Always allowed; never blocked by anonymous trial cookies |
+  | Anonymous (First visit / No cookie) | `true` | `false` | `false` | Allowed; trial available |
+  | Anonymous (Active session, no plan created) | `true` | `false` | `false` | Allowed; trial available |
+  | Anonymous (One plan already created) | `false` | `false` | `true` | Blocked; prompt to authenticate |
+  | Corrupted / Malformed Cookie | `true` | `false` | `false` | Gracefully treated as new visitor |
+
+### 18.3 Frontend Pre-Flight Workflow (`IdeaInputPage.js`)
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Anonymous Visitor
+    participant UI as IdeaInputPage
+    participant API as Backend REST API
+    participant DB as SQLite DB
+    participant AI as Gemini 3.8 Flash
+
+    User->>UI: Clicks "Generate Business Plan"
+    UI->>UI: Set isLoading = true (Guards against duplicate clicks)
+    alt Authenticated User
+        UI->>API: Directly dispatch 6 parallel AI requests
+    else Anonymous User
+        UI->>API: GET /api/plans/trial-status
+        API->>DB: Query trial_sessions for trial cookie token
+        DB-->>API: Return session record
+        alt Trial Already Exhausted (plan_id != null)
+            API-->>UI: 200 OK { allowed: false, trialExhausted: true }
+            UI->>UI: Set isLoading = false
+            UI->>UI: Open AuthModal ("Free Trial Already Used")
+            Note over UI: Entered form values and startup idea preserved in DOM
+            Note over AI: ZERO AI requests dispatched! (Quota protected)
+        else Trial Available
+            API-->>UI: 200 OK { allowed: true, trialExhausted: false }
+            UI->>AI: Dispatch 6 parallel requests to AI endpoints
+            AI-->>UI: Return generated modules
+            UI->>API: POST /api/plans (Persist plan & mark trial consumed)
+            API-->>UI: 201 Created
+            UI->>UI: Navigate to /dashboard
+        else Network / Server Error
+            API-->>UI: Error / Timeout
+            UI->>UI: Set isLoading = false
+            UI->>UI: Alert user with retryable error message
+            Note over AI: ZERO AI requests dispatched on network failure
+        end
+    end
+```
+
+### 18.4 Server-Side Invariant & Defense-in-Depth
+The frontend pre-flight check is an optimization to prevent wasted AI inference, not a sole security boundary.
+- If a client bypasses the frontend and directly invokes `POST /api/plans` with an exhausted trial token, the server still enforces the trial constraint and responds with `403 TRIAL_LIMIT_REACHED`.
+- If trial state changes between pre-flight check and plan persistence (e.g. concurrent tabs), the existing `createTrialPlan` transaction in `services/planService.js` safely rejects the second write.

@@ -6,7 +6,7 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoading, isDark, toggleTheme }) => {
-  const { openAuthModal } = useAuth();
+  const { openAuthModal, isAuthenticated } = useAuth();
   const [isVisible, setIsVisible] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [completedFields, setCompletedFields] = useState(new Set());
@@ -30,6 +30,28 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
     setIsLoading(true);
 
     try {
+      // Pre-Flight Check: Verify trial availability before firing AI generation requests
+      if (!isAuthenticated) {
+        try {
+          const statusRes = await api.get('/api/plans/trial-status');
+          const trialData = statusRes.data?.data;
+          if (trialData && (trialData.trialExhausted || !trialData.allowed)) {
+            setIsLoading(false);
+            openAuthModal({
+              title: 'Free Trial Already Used',
+              subtitle: trialData.message || 'You have already generated your free trial plan. Sign in or create an account to continue.'
+            });
+            return;
+          }
+        } catch (checkErr) {
+          console.error('[Pre-Flight] Trial status check failed:', checkErr);
+          setIsLoading(false);
+          const msg = checkErr.response?.data?.error?.message || checkErr.message || 'Network error';
+          alert(`Unable to verify trial availability (${msg}). Please check your connection and try again.`);
+          return;
+        }
+      }
+
       // 1. Purge stale generation data from prior runs to prevent stale state pollution
       const GENERATION_STORAGE_KEYS = [
         'leanCanvas',

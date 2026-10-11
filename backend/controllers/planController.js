@@ -2,6 +2,7 @@
 const {
   createPlan,
   createTrialPlan,
+  checkTrialStatus,
   getPlanById,
   getPlanForRequester,
   listPlans,
@@ -377,13 +378,38 @@ async function claimPlanController(req, res) {
   }
 }
 
+/**
+ * Controller to check trial status for the current requester.
+ * Lightweight pre-flight check to prevent wasted AI generation requests.
+ * GET /api/plans/trial-status
+ */
+async function getTrialStatusController(req, res) {
+  try {
+    const cookies = parseCookies(req);
+    const trialToken = cookies[TRIAL_COOKIE_NAME];
+    const status = checkTrialStatus(trialToken, req.user);
+    return res.status(200).json({
+      success: true,
+      data: status
+    });
+  } catch (error) {
+    console.error('Check Trial Status Error:', error.message);
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'TRIAL_STATUS_CHECK_FAILED',
+        message: 'Failed to verify trial status.'
+      }
+    });
+  }
+}
+
 module.exports = {
   createPlanController,
   getPlanByIdController,
+  getTrialStatusController,
   listPlansController,
   updatePlanController,
   deletePlanController,
   claimPlanController
 };
-
-
