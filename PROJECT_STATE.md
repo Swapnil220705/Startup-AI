@@ -67,12 +67,13 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 ## 6. Current Status
 
-- **Phase**: Phase 6 — Production Readiness, Deployment & Hardening
-- **Current Chunk**: Chunk 6.4 — CI Pipeline & Dependency Cleanup
-- **Status**: Completed
+- **Phase**: Phase 7 — AI Pipeline Optimization & Idea Refinement
+- **Current Chunk**: Phase 7.0 — AI Pipeline & Input-to-Output Audit
+- **Status**: Completed (Audit Only — Zero Code Changes)
 - **Phase 5 Status**: COMPLETED
 - **Phase 6 Status**: COMPLETED
-- **Next Recommended Milestone**: Production Hosting Deployment & Cloud Provisioning (Phase 7)
+- **Phase 7.0 Status**: COMPLETED
+- **Next Recommended Milestone**: Chunk 7.1 — Prompt Sanitization, Defect Remediation & Backend Schema Validation
 
 ---
 
@@ -469,25 +470,66 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 5.6A: Financial Model Export: Architecture Audit Only (Completed - `81e5a3b`)
   - Chunk 5.6B: Financial Model XLSX Export Engine & UI Integration (Completed - `eb40b2c`)
   - Corrective Chunk 5.6B.1: Financial Formula Semantics and Bundle Optimization (Completed - `f4bc1f4`)
-- **Phase 6: Production Hardening, Test Suite Modernization & CI/CD (COMPLETED - Commit `9b7739f`)**
+- **Phase 6: Production Hardening, Test Suite Modernization & CI/CD (COMPLETED - Commit `32d11a0`)**
   - Chunk 6.0: Production Readiness & Deployment Audit (Completed - `d7c15be`)
   - Chunk 6.1: Production Environment, Scripts & Health Check Hardening (Completed - `8a96b30`)
   - Chunk 6.2: Security Hardening & Rate Limiting (Completed - `028b8c1`)
   - Chunk 6.3: Pre-Flight Trial Check & AI Quota Protection (Completed - `9b7739f`)
-  - Chunk 6.4: CI Pipeline & Dependency Cleanup (Completed)
+  - Chunk 6.4: CI Pipeline & Dependency Cleanup (Completed - `32d11a0`)
+- **Phase 7: AI Pipeline Optimization & Idea Refinement (ACTIVE)**
+  - Chunk 7.0: AI Pipeline & Input-to-Output Audit (Completed - Audit Only)
+  - Chunk 7.1: Prompt Sanitization, Defect Remediation & Backend Schema Validation (Scheduled)
+  - Chunk 7.2: Structured Startup Brief Schema & Single-Call Generator (Scheduled)
+  - Chunk 7.3: Interactive Refinement UI & Brief Confirmation Workflow (Scheduled)
+  - Chunk 7.4: Coordinated 6-Module Generation & Cross-Module Contextual Integration (Scheduled)
+  - Chunk 7.5: Persistence, Migration, History, Export & Public Sharing Compatibility (Scheduled)
+
+---
+
+## 7.12 Completed in Phase 7.0 — AI Pipeline & Input-to-Output Audit
+
+### 1. Executive Summary & Audit Scope
+Conducted a comprehensive, end-to-end architectural audit of Startup-AI's generative pipeline across frontend intake (`IdeaInputPage.js`), parallel dispatch (`Promise.allSettled`), backend Express routing/controllers, prompt construction (`models/*.js`), centralized Gemini client (`geminiClient.js`), JSON parsing (`jsonParser.js`), database persistence (`plans` table in SQLite), and UI presentation (`DashboardTabs.js`, `PitchPreviewPage.js`).
+
+### 2. Confirmed Defects & Evidence
+1. **Omission of Problem in User Personas Prompt (`backend/models/personasModel.js`)**:
+   - *Evidence*: Lines 8–13 interpolate `startupName`, `industry`, `solution`, `targetAudience`, and `usp`, but omit `data.problem`. The prompt instructs Gemini to describe user pain points without providing the problem statement being solved.
+2. **Dropped Idea Summary in Form Submission (`frontend/src/pages/IdeaInputPage.js`)**:
+   - *Evidence*: `IdeaInputPage.js` renders a user textarea for `Idea Summary (Optional)` (`formData.summary`), but lines 69–76 construct `payload` without `summary`. The entered summary is silently dropped from all 6 AI calls and plan persistence.
+3. **Data Loss in Revenue Model Shape Mutation (`frontend/src/pages/IdeaInputPage.js`)**:
+   - *Evidence*: Backend returns `{ revenueStreams, pricingStrategy, expectedMonthlyRevenue, growthOpportunities }`. Lines 119–130 transform this into a 2-item array of `{ model, description, projection }`. `growthOpportunities` is permanently discarded and never persisted or displayed.
+4. **Literal `"undefined"` String Pollution Across Prompts**:
+   - *Evidence*: Controllers only require `startupName`. If optional fields are omitted, JavaScript template literals evaluate to `"Problem: undefined"` or `"Solution: undefined"`, causing Gemini to hallucinate based on the word `"undefined"`.
+5. **Investor Pitch Deck Contract Disconnect**:
+   - *Evidence*: Backend `pitchModel.js` returns only `{ elevatorPitch: "..." }`. The frontend renders a 7-slide deck where slides 2–6 are synthesized from other modules and slide 7 repeats the elevator pitch.
+6. **Absence of Backend Output Schema Validation**:
+   - *Evidence*: `jsonParser.js` validates only syntactic JSON structure (stripping fences and trailing commas). It performs zero key existence, type checking, or schema validation. Missing or renamed keys pass directly through to HTTP 200 responses.
+7. **Cross-Module Inconsistency from Uncoordinated Generation**:
+   - *Evidence*: 6 modules are prompted concurrently and independently using uncurated raw inputs. Gemini hallucinates conflicting assumptions across modules (e.g. B2B enterprise in Lean Canvas vs B2C mobile in Revenue; conflicting pricing models; divergent competitor sets).
+
+### 3. Proposed Refinement Architecture: Structured Startup Brief
+Designed a versioned, user-confirmed canonical startup brief to serve as the shared source of truth for all 6 modules:
+- **Separation of Concerns**: Separates raw user input, verified facts, AI interpretations, explicit assumptions, and unresolved clarification questions.
+- **Illustrative Case Study**: Affordable-food app ("PocketPlate") model demonstrating problem framing, two-sided marketplace dynamics, urban pickup constraints, and 15–20% take-rate monetization.
+- **Workflow & Cost Optimization**: Replaces uncoordinated parallel generation with a two-stage flow:
+  1. Lightweight single Gemini call creates Draft Brief with 2–3 clarification questions.
+  2. User confirms or edits brief on an interactive refinement screen (`/refine`).
+  3. Coordinated 6-module generation executes using the Confirmed Brief, guaranteeing cross-module harmony.
+- **Zero-Breaking-Change Persistence**: Backward-compatible SQLite migration adding nullable `brief TEXT` column to `plans`. Legacy plans (`brief = NULL`) remain fully supported across history, dashboard, public sharing, and exports.
 
 ---
 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `9b7739f` (fix: prevent wasted AI generation after trial exhaustion)
+- **Pre-Chunk Commit**: `32d11a0` (chore: add CI checks and remove unused dependencies)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
 - **Phase 4 Status**: COMPLETED
 - **Phase 5 Status**: COMPLETED
 - **Phase 6 Status**: COMPLETED
+- **Phase 7.0 Status**: COMPLETED (Audit Only)
 
 ---
 
@@ -495,6 +537,9 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 | Verification Check | Result | Details |
 |---|---|---|
+| **Phase 7.0 AI Pipeline Audit** | PASS | End-to-end trace from frontend form input to dashboard tabs. 7 confirmed defects cataloged with line-level code evidence. Structured Startup Brief schema and refinement workflow designed. Phase 7 roadmap established. |
+| **Backend Test Suite Regression Check (21 suites)** | PASS | `npm test` in `backend` runs all 21 test suites cleanly with 0 errors across 230+ assertions. |
+| **Frontend Test Suite Regression Check (13 suites, 98 tests)** | PASS | `npm test -- --watchAll=false src` runs all 13 frontend test suites cleanly (98/98 tests pass) with 0 errors. |
 | **Dependency Cleanup Verification** | PASS | Uninstalled confirmed dead dependencies: `openai` (^5.8.2) removed from `backend/package.json` and lockfile; `react-router-dom` (^7.6.3) removed from `frontend/package.json` and lockfile. Grep confirmed 0 active references remaining across application code, tests, scripts, and configs. |
 | **GitHub Actions CI Workflow (.github/workflows/ci.yml)** | PASS | Configured workflow running on PRs to `main` and pushes to `main`. 7 sequential steps: Checkout repo, Node 22 setup, backend `npm ci`, backend `npm test` with safe test env vars, frontend `npm ci`, frontend `CI=true npm test -- --watchAll=false`, and frontend production build. |
 | **Backend Test Suite After Cleanup (21 suites)** | PASS | `npm test` in `backend` runs all 21 test suites cleanly with 0 errors across 230+ assertions after removing `openai`. |

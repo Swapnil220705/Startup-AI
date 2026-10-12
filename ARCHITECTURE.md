@@ -1748,3 +1748,66 @@ sequenceDiagram
 The frontend pre-flight check is an optimization to prevent wasted AI inference, not a sole security boundary.
 - If a client bypasses the frontend and directly invokes `POST /api/plans` with an exhausted trial token, the server still enforces the trial constraint and responds with `403 TRIAL_LIMIT_REACHED`.
 - If trial state changes between pre-flight check and plan persistence (e.g. concurrent tabs), the existing `createTrialPlan` transaction in `services/planService.js` safely rejects the second write.
+
+---
+
+## 19. AI Generation Pipeline & Refinement Architecture Audit (Phase 7.0)
+
+### 19.1 Pipeline State & Architectural Overview
+Startup-AI currently utilizes an uncoordinated, single-stage generation workflow:
+1. **Intake (`IdeaInputPage.js`)**: Captures user input across basic fields (`name`, `domain`, `problem`, `solution`, `audience`, `usp`) and an optional `summary`.
+2. **Parallel Dispatch**: Fires 6 concurrent POST requests (`/api/lean-canvas`, `/api/mvp`, `/api/revenue`, `/api/pitch`, `/api/personas`, `/api/competitors`) using `Promise.allSettled`.
+3. **Backend Processing**: Handlers in `backend/controllers/*.js` validate only `startupName`, passing `req.body` directly to model modules (`backend/models/*.js`).
+4. **Prompt Construction**: Values are interpolated via JavaScript template strings. Missing fields evaluate to the literal string `"undefined"`.
+5. **Centralized Gemini Client**: Dispatches requests to `gemini-3.8-flash:generateContent` through an in-process concurrency limiter (`maxConcurrent: 2`), enforcing 30s timeouts and exponential backoff on transient errors (429, 408, 5xx).
+6. **JSON Parsing (`backend/utils/jsonParser.js`)**: Strips markdown fences and parses outer JSON. **Zero schema validation** is executed prior to returning HTTP 200.
+7. **Frontend Ingestion & Persistence**: `IdeaInputPage.js` receives results, mutates data shapes (e.g., converting Revenue into a 2-element array), stores records in `localStorage`, and persists via `POST /api/plans`.
+
+### 19.2 Confirmed Defects & Data Flow Discrepancies
+The Phase 7.0 audit verified seven major architectural defects:
+1. **Prompt Incompleteness in User Personas (`backend/models/personasModel.js`)**: The prompt interpolates `startupName`, `industry`, `solution`, `targetAudience`, and `usp`, but **completely omits `data.problem`**. Personas are generated without knowledge of the core customer problem.
+2. **Dropped Idea Summary in Frontend (`frontend/src/pages/IdeaInputPage.js`)**: The form renders an `Idea Summary (Optional)` textarea (`formData.summary`), but lines 69–76 omit `summary` from `payload`. The user's summary is silently discarded and never sent to any backend AI endpoint.
+3. **Data Loss in Revenue Model Transformation (`frontend/src/pages/IdeaInputPage.js`)**: Backend returns `{ revenueStreams, pricingStrategy, expectedMonthlyRevenue, growthOpportunities }`. Frontend mutates this into a 2-element array `[{ model, description, projection }]` and **permanently discards `growthOpportunities`**.
+4. **Literal `"undefined"` String Pollution**: Controllers do not validate optional fields. If fields are omitted, template literals evaluate to `"Problem: undefined"` or `"Solution: undefined"`, triggering model hallucinations based on the word `"undefined"`.
+5. **Investor Pitch Deck Contract Disconnect**: Backend `pitchModel.js` returns only `{ elevatorPitch: "..." }`. The frontend renders a 7-slide deck where slides 2–6 are synthesized from other modules and slide 7 repeats the elevator pitch.
+6. **Absence of Backend Schema Validation**: `jsonParser.js` verifies JSON syntactic validity but does not enforce expected keys or types. Missing keys or unexpected keys from Gemini pass through to persistence.
+7. **Cross-Module Inconsistency**: Because all 6 modules are prompted simultaneously from uncurated raw inputs in complete isolation, Gemini routinely makes conflicting assumptions (e.g., B2B vs B2C, differing pricing models, mismatched target audiences).
+
+### 19.3 Proposed Refinement Architecture: Structured Startup Brief
+To achieve cross-module consistency and user alignment without breaking existing persistence, trial limits, or sharing, Phase 7 designs a structured two-stage workflow:
+
+```text
+[User Raw Input]
+       │
+       ▼
+[Stage 1: Brief Generation] (Single lightweight Gemini call)
+       │
+       ▼
+[Draft Startup Brief] (Separates Facts, Interpretations, Assumptions, and Clarification Questions)
+       │
+       ▼
+[Interactive Refinement UI] (User reviews, answers 2-3 questions, makes edits, confirms)
+       │
+       ▼
+[Confirmed Canonical Brief] (Locked Version 1 context)
+       │
+       ▼
+[Stage 2: Coordinated Module Generation] (All 6 modules consume the exact same Confirmed Brief)
+       │
+       ▼
+[Dashboard & Persistence] (Plan saved with Brief; 100% backward compatible with legacy plans)
+```
+
+#### Canonical Startup Brief Schema:
+- `rawInput`: Original user submission (immutable for traceability).
+- `facts`: User-provided facts (name, domain/industry, problem, solution, target audience, USP).
+- `aiInterpretations`: AI-derived market classification, category, and core value proposition.
+- `assumptions`: Explicit assumptions regarding business model, geography, tech stack, and regulatory bounds.
+- `unresolvedUnknowns`: Clarification questions identified by AI.
+- `userEdits`: Record of user overrides and clarification answers.
+- `metadata`: `version: 1`, `status: 'confirmed' | 'draft'`, `confirmedAt: ISO timestamp`.
+
+#### Compatibility Strategy:
+- **Database**: Add nullable `brief TEXT` column to `plans` table via Migration 006. Existing plans have `brief = NULL` and remain fully readable.
+- **Frontend**: Dashboard gracefully handles plans with or without `brief`.
+- **Security & Trials**: Trial status check and atomic claiming remain authoritative and untouched.
