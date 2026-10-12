@@ -5,7 +5,6 @@
   "scripts": {
     "start": "node index.js",
     "test": "node tests/controllers.test.js && node tests/uspDataFlow.test.js && node tests/mvpStorage.test.js && node tests/frontendRoutes.test.js && node tests/e2eGenerationFlow.test.js && node tests/jsonParser.test.js && node tests/geminiClient.test.js && node tests/partialGeneration.test.js && node tests/persistence.test.js && node tests/frontendPersistenceIntegration.test.js && node tests/planHistory.test.js && node tests/reopenPlan.test.js && node tests/planLifecycle.test.js && node tests/authEndpoints.test.js && node tests/planAuthorization.test.js && node tests/planSharing.test.js && node tests/planShareRecovery.test.js && node tests/planShareConcurrency.test.js && node tests/healthEndpoints.test.js && node tests/securityAndRateLimiting.test.js && node tests/trialStatusPreFlight.test.js"
-
   },
   "keywords": [],
   "author": "",
@@ -20,7 +19,6 @@
     "express": "^5.1.0",
     "express-rate-limit": "^8.7.1",
     "google-auth-library": "^10.1.0",
-    "helmet": "^8.3.0",
-    "openai": "^5.8.2"
+    "helmet": "^8.3.0"
   }
 }

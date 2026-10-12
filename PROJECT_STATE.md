@@ -68,10 +68,11 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 6 — Production Readiness, Deployment & Hardening
-- **Current Chunk**: Chunk 6.3 — Pre-Flight Trial Check & AI Quota Protection
+- **Current Chunk**: Chunk 6.4 — CI Pipeline & Dependency Cleanup
 - **Status**: Completed
 - **Phase 5 Status**: COMPLETED
-- **Next Planned Chunk**: Chunk 6.4 — CI/CD Pipeline & Dependency Cleanup
+- **Phase 6 Status**: COMPLETED
+- **Next Recommended Milestone**: Production Hosting Deployment & Cloud Provisioning (Phase 7)
 
 ---
 
@@ -468,25 +469,25 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 5.6A: Financial Model Export: Architecture Audit Only (Completed - `81e5a3b`)
   - Chunk 5.6B: Financial Model XLSX Export Engine & UI Integration (Completed - `eb40b2c`)
   - Corrective Chunk 5.6B.1: Financial Formula Semantics and Bundle Optimization (Completed - `f4bc1f4`)
-- **Phase 6: Production Hardening, Test Suite Modernization & CI/CD**
+- **Phase 6: Production Hardening, Test Suite Modernization & CI/CD (COMPLETED - Commit `9b7739f`)**
   - Chunk 6.0: Production Readiness & Deployment Audit (Completed - `d7c15be`)
   - Chunk 6.1: Production Environment, Scripts & Health Check Hardening (Completed - `8a96b30`)
   - Chunk 6.2: Security Hardening & Rate Limiting (Completed - `028b8c1`)
-  - Chunk 6.3: Pre-Flight Trial Check & AI Quota Protection (Completed)
-  - Chunk 6.4: CI/CD Pipeline & Dependency Cleanup (Planned)
+  - Chunk 6.3: Pre-Flight Trial Check & AI Quota Protection (Completed - `9b7739f`)
+  - Chunk 6.4: CI Pipeline & Dependency Cleanup (Completed)
 
 ---
 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `028b8c1` (fix: harden backend security headers, rate limiting, and api key hygiene)
+- **Pre-Chunk Commit**: `9b7739f` (fix: prevent wasted AI generation after trial exhaustion)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
 - **Phase 4 Status**: COMPLETED
 - **Phase 5 Status**: COMPLETED
-- **Phase 6 Status**: IN PROGRESS (Chunk 6.3 Completed)
+- **Phase 6 Status**: COMPLETED
 
 ---
 
@@ -494,6 +495,11 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 
 | Verification Check | Result | Details |
 |---|---|---|
+| **Dependency Cleanup Verification** | PASS | Uninstalled confirmed dead dependencies: `openai` (^5.8.2) removed from `backend/package.json` and lockfile; `react-router-dom` (^7.6.3) removed from `frontend/package.json` and lockfile. Grep confirmed 0 active references remaining across application code, tests, scripts, and configs. |
+| **GitHub Actions CI Workflow (.github/workflows/ci.yml)** | PASS | Configured workflow running on PRs to `main` and pushes to `main`. 7 sequential steps: Checkout repo, Node 22 setup, backend `npm ci`, backend `npm test` with safe test env vars, frontend `npm ci`, frontend `CI=true npm test -- --watchAll=false`, and frontend production build. |
+| **Backend Test Suite After Cleanup (21 suites)** | PASS | `npm test` in `backend` runs all 21 test suites cleanly with 0 errors across 230+ assertions after removing `openai`. |
+| **Frontend Test Suite After Cleanup (13 suites, 98 tests)** | PASS | `npm test -- --watchAll=false src` runs all 13 frontend test suites cleanly (98/98 tests pass) with 0 errors after removing `react-router-dom`. |
+| **Frontend Production Build After Cleanup** | PASS | `npm run build` compiles cleanly with 0 errors (`main.4715f943.js` at 124.39 kB gzipped, on-demand Excel chunk at 256.73 kB gzipped). |
 | **Pre-Flight Trial Check Backend Suite (9 tests)** | PASS | `backend/tests/trialStatusPreFlight.test.js`: 9 tests verifying: 1) first-time anonymous visitor trial available, 2) anonymous session with no plan trial available, 3) anonymous session with created plan trial exhausted, 4) malformed/invalid/missing tokens handled safely, 5) authenticated users bypass anonymous trial limits, 6) controller contract & hygiene (zero leaked secrets or plan content), 7) routing precedence (`/trial-status` mounted before `/:id`), 8) rate limiting via `trialStatusLimiter` (60 req/min per IP), and 9) server-side persistence enforcement invariant on `POST /api/plans`. |
 | **IdeaInputPage Pre-Flight Frontend Suite (5 tests)** | PASS | `frontend/src/pages/IdeaInputPage.test.js`: 5 tests verifying: 1) anonymous user with available trial dispatches 6 parallel AI requests and persists plan, 2) anonymous user with exhausted trial dispatches 0 AI requests, opens AuthModal, and preserves form values, 3) authenticated user bypasses trial check and generates directly, 4) pre-flight network error halts process, dispatches 0 AI calls, and displays retryable alert, and 5) duplicate submissions blocked while `isLoading` is true. |
 | **Backend Test Suite (21 suites)** | PASS | `npm test` in `backend` runs all 21 test suites cleanly with 0 errors across 230+ assertions (including `trialStatusPreFlight.test.js`, `securityAndRateLimiting.test.js`, `healthEndpoints.test.js`, etc.). |
