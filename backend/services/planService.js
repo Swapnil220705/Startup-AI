@@ -25,7 +25,7 @@ function getTrialCookieOptions() {
 
 /**
  * Sets the anonymous trial cookie on the Express response.
- * 
+ *
  * @param {object} res - Express response
  * @param {string} token - Cryptographically random trial UUID
  */
@@ -37,7 +37,7 @@ function setTrialCookie(res, token) {
 
 /**
  * Clears the trial cookie on the Express response.
- * 
+ *
  * @param {object} res - Express response
  */
 function clearTrialCookie(res) {
@@ -52,7 +52,7 @@ function clearTrialCookie(res) {
 /**
  * Computes a salted SHA-256 hash of the client IP address.
  * Used exclusively as an abuse/rate-mitigation signal, never as primary identity.
- * 
+ *
  * @param {string} ip
  * @returns {string}
  */
@@ -66,7 +66,7 @@ function hashIp(ip) {
 
 /**
  * Retrieves or registers an anonymous trial session in the database.
- * 
+ *
  * @param {string} [trialToken] - Existing trial cookie value
  * @param {string} [ip] - Client IP address
  * @param {object} [db] - Optional Database instance
@@ -150,6 +150,7 @@ function formatPlanRow(row, includeModules = true) {
     solution: row.solution || '',
     targetAudience: row.target_audience || '',
     usp: row.usp || '',
+    brief: safeJsonParse(row.brief),
     generationStatus: row.generation_status,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -201,11 +202,11 @@ function deriveGenerationStatus(planData) {
 
 /**
  * Creates and persists a new startup plan.
- * 
+ *
  * Supports both:
  * - createPlan(planData, db) [Phase 3 backward compatible]
  * - createPlan(planData, { userId }, db) [Phase 4 user ownership]
- * 
+ *
  * @param {object} planData - Input details and generated modules
  * @param {object} [optionsOrDb] - Options { userId } or Database instance
  * @param {object} [db] - Optional Database instance
@@ -253,6 +254,7 @@ function createPlan(planData, optionsOrDb = null, db = null) {
     solution: planData.solution ? String(planData.solution).trim() : null,
     target_audience: planData.targetAudience ? String(planData.targetAudience).trim() : null,
     usp: planData.usp ? String(planData.usp).trim() : null,
+    brief: safeJsonStringify(planData.brief),
     lean_canvas: safeJsonStringify(planData.leanCanvas),
     mvp: safeJsonStringify(planData.mvp),
     revenue: safeJsonStringify(planData.revenue),
@@ -275,6 +277,7 @@ function createPlan(planData, optionsOrDb = null, db = null) {
       solution,
       target_audience,
       usp,
+      brief,
       lean_canvas,
       mvp,
       revenue,
@@ -294,6 +297,7 @@ function createPlan(planData, optionsOrDb = null, db = null) {
       @solution,
       @target_audience,
       @usp,
+      @brief,
       @lean_canvas,
       @mvp,
       @revenue,
@@ -323,7 +327,7 @@ function createPlan(planData, optionsOrDb = null, db = null) {
  * Creates and persists a plan for an anonymous trial session.
  * Enforces the strict one-plan anonymous trial limit.
  * Runs atomically inside a SQLite transaction.
- * 
+ *
  * @param {object} planData - Input details and generated modules
  * @param {object} trialContext - { trialToken, ip }
  * @param {object} [db] - Optional Database instance
@@ -352,7 +356,7 @@ function createTrialPlan(planData, trialContext = {}, db = null) {
 
 /**
  * Retrieves a plan by its ID directly without access control.
- * 
+ *
  * @param {string} id - Plan UUID
  * @param {object} [db] - Optional Database instance
  * @returns {object|null}
@@ -375,12 +379,12 @@ function getPlanById(id, db = null) {
 
 /**
  * Retrieves a plan with strict requester access-control verification.
- * 
+ *
  * Rules:
  * - Authenticated: allowed ONLY if plan.user_id === userId.
  * - Anonymous: allowed ONLY if plan.user_id IS NULL AND trial_sessions links trialToken to this plan.
  * - Non-matching requests return null (safe 404 PLAN_NOT_FOUND).
- * 
+ *
  * @param {string} id - Plan UUID
  * @param {object} authContext - { userId, trialToken }
  * @param {object} [db] - Optional Database instance
@@ -424,7 +428,7 @@ function getPlanForRequester(id, authContext = {}, db = null) {
 /**
  * Lists plans ordered by creation date descending with pagination.
  * Scoped to user_id when provided. Anonymous users receive an empty list.
- * 
+ *
  * @param {object} [options]
  * @param {number} [options.limit=50]
  * @param {number} [options.offset=0]
@@ -468,6 +472,7 @@ function listPlans(options = {}, db = null) {
         solution,
         target_audience,
         usp,
+        brief,
         generation_status,
         created_at,
         updated_at
@@ -502,6 +507,7 @@ function listPlans(options = {}, db = null) {
       solution,
       target_audience,
       usp,
+      brief,
       generation_status,
       created_at,
       updated_at
@@ -524,7 +530,7 @@ function listPlans(options = {}, db = null) {
 /**
  * Updates editable metadata of an existing startup plan.
  * Verifies ownership when options.userId is supplied.
- * 
+ *
  * @param {string} id - Plan UUID
  * @param {object} updates - Metadata fields to update (startupName, industry, problem, solution, targetAudience, usp)
  * @param {object} [optionsOrDb] - Options { userId } or Database instance
@@ -598,6 +604,11 @@ function updatePlan(id, updates = {}, optionsOrDb = null, db = null) {
     }
   }
 
+  if (updates.brief !== undefined) {
+    setClauses.push('brief = @brief');
+    params.brief = safeJsonStringify(updates.brief);
+  }
+
   setClauses.push('updated_at = @updated_at');
 
   let sql;
@@ -623,7 +634,7 @@ function updatePlan(id, updates = {}, optionsOrDb = null, db = null) {
 /**
  * Deletes a startup plan by its ID.
  * Verifies ownership when options.userId is supplied.
- * 
+ *
  * @param {string} id - Plan UUID
  * @param {object} [optionsOrDb] - Options { userId } or Database instance
  * @param {object} [db] - Optional Database instance
@@ -667,14 +678,14 @@ function deletePlan(id, optionsOrDb = null, db = null) {
 
 /**
  * Claims an unowned anonymous trial plan for an authenticated user.
- * 
+ *
  * Rules:
  * 1. Plan must exist and currently have user_id IS NULL.
  * 2. Requester must possess the matching trial_sessions cookie associated with plan_id.
  * 3. Atomic UPDATE plans SET user_id = :userId WHERE id = :planId AND user_id IS NULL.
  * 4. Preserves all 6 AI modules, status, errors, timestamps, input fields.
  * 5. Returns 409 PLAN_ALREADY_CLAIMED on race/duplicate claim attempts.
- * 
+ *
  * @param {string} planId - UUID of the plan to claim
  * @param {string} userId - UUID of the authenticated user
  * @param {string} trialToken - Trial cookie value

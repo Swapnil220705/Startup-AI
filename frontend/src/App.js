@@ -9,6 +9,7 @@ import DashboardPage from './pages/DashboardPage';
 import PitchPreviewPage from './pages/PitchPreviewPage';
 import HistoryPage from './pages/HistoryPage';
 import SharedPlanPage from './pages/SharedPlanPage';
+import RefineBriefPage from './pages/RefineBriefPage';
 import AuthModal from './components/AuthModal';
 import { mockDashboardData } from './utils/mockData';
 
@@ -38,8 +39,8 @@ const App = () => {
       <AuthProvider>
         <div className={`min-h-screen transition-colors ${isDark ? 'dark bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
           <Router>
-            <AppContent 
-              isDark={isDark} 
+            <AppContent
+              isDark={isDark}
               toggleTheme={toggleTheme}
               formData={formData}
               setFormData={setFormData}
@@ -75,11 +76,11 @@ const AppContent = ({ currentPath, navigate, isDark, toggleTheme, formData, setF
     if (basePath === '/share' || basePath.startsWith('/share/')) {
       const token = basePath.startsWith('/share/') ? basePath.slice('/share/'.length) : '';
       return (
-        <SharedPlanPage 
-          token={token} 
-          navigate={navigate} 
-          isDark={isDark} 
-          toggleTheme={toggleTheme} 
+        <SharedPlanPage
+          token={token}
+          navigate={navigate}
+          isDark={isDark}
+          toggleTheme={toggleTheme}
         />
       );
     }
@@ -89,6 +90,8 @@ const AppContent = ({ currentPath, navigate, isDark, toggleTheme, formData, setF
         return <LandingPage navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} />;
       case '/start':
         return <IdeaInputPage navigate={navigate} formData={formData} setFormData={setFormData} isLoading={isLoading} setIsLoading={setIsLoading} isDark={isDark} toggleTheme={toggleTheme} />;
+      case '/refine':
+        return <RefineBriefPage navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} />;
       case '/dashboard':
         return <DashboardPage navigate={navigate} data={mockDashboardData} isDark={isDark} toggleTheme={toggleTheme} currentPath={currentPath} />;
       case '/pitch-preview':

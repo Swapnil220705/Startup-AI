@@ -10,7 +10,7 @@ function getDb(customDb) {
 /**
  * Generates a cryptographically secure random bearer token with 256 bits of entropy.
  * 32 bytes encoded as 64 hex characters.
- * 
+ *
  * @returns {string} 64-character hex token
  */
 function generateShareToken() {
@@ -20,7 +20,7 @@ function generateShareToken() {
 /**
  * Computes the SHA-256 hash of a raw bearer share token.
  * Only the hash is persisted in the database to prevent bearer URL leakage on DB dumps.
- * 
+ *
  * @param {string} rawToken
  * @returns {string|null}
  */
@@ -47,7 +47,7 @@ function safeJsonParse(val) {
 
 /**
  * Strictly sanitizes a persisted plan database row into a public read-only representation.
- * 
+ *
  * Explicitly excludes:
  * - user_id / userId
  * - owner email / name / credentials
@@ -55,7 +55,7 @@ function safeJsonParse(val) {
  * - internal database rowids
  * - generation_errors / generationErrors
  * - stack traces or model telemetry
- * 
+ *
  * @param {object} planRow - Raw database row from plans table
  * @returns {object|null}
  */
@@ -63,6 +63,21 @@ function toPublicSharedPlan(planRow) {
   if (!planRow || typeof planRow !== 'object') {
     return null;
   }
+
+  const parsedBrief = safeJsonParse(planRow.brief);
+  const sanitizedPublicBrief = parsedBrief ? {
+    status: parsedBrief.status || 'confirmed',
+    category: parsedBrief.aiInterpretations?.category || '',
+    businessModel: parsedBrief.aiInterpretations?.businessModel || '',
+    targetMarketDynamics: parsedBrief.aiInterpretations?.targetMarketDynamics || '',
+    coreValueProposition: parsedBrief.aiInterpretations?.coreValueProposition || '',
+    assumptions: Array.isArray(parsedBrief.assumptions)
+      ? parsedBrief.assumptions.map(a => ({
+          assumption: typeof a === 'string' ? a : String(a.assumption || '').trim(),
+          category: typeof a === 'object' && a.category ? a.category : 'General'
+        }))
+      : []
+  } : null;
 
   return {
     id: planRow.id,
@@ -72,6 +87,7 @@ function toPublicSharedPlan(planRow) {
     solution: planRow.solution || '',
     targetAudience: planRow.target_audience || '',
     usp: planRow.usp || '',
+    brief: sanitizedPublicBrief,
     leanCanvas: safeJsonParse(planRow.lean_canvas),
     mvp: safeJsonParse(planRow.mvp),
     revenue: safeJsonParse(planRow.revenue),
@@ -86,7 +102,7 @@ function toPublicSharedPlan(planRow) {
 /**
  * Retrieves the current share status for a plan owned by an authenticated user.
  * Does NOT generate a new share if none exists.
- * 
+ *
  * @param {string} planId - UUID of the plan
  * @param {string} userId - UUID of the authenticated owner
  * @param {object} [db] - Optional Database instance
@@ -164,7 +180,7 @@ function getActiveShareStatus(planId, userId, db = null) {
  * - Encrypted token recovery for existing active shares
  * - Explicit atomic replacement via options.replace = true
  * - Identification of legacy Phase 5.3 unrecoverable shares requiring replacement
- * 
+ *
  * @param {string} planId - UUID of the plan
  * @param {string} userId - UUID of the authenticated owner
  * @param {object|Database} [optionsOrDb] - Options object { replace: boolean } or Database instance
@@ -343,7 +359,7 @@ function createOrGetActiveShare(planId, userId, optionsOrDb = {}, customDb = nul
 /**
  * Revokes the active share link for a plan owned by an authenticated user.
  * Preserves the share record for audit/lifecycle history and marks is_active = 0, revoked_at = now.
- * 
+ *
  * @param {string} planId - UUID of the plan
  * @param {string} userId - UUID of the authenticated owner
  * @param {object} [db] - Optional Database instance
@@ -390,14 +406,14 @@ function revokeActiveShare(planId, userId, db = null) {
 
 /**
  * Retrieves a sanitized, read-only plan representation via public bearer share token.
- * 
+ *
  * Security & Data Guarantees:
  * - Computes SHA-256 of the token to find active share
  * - Verifies is_active === 1 and revoked_at IS NULL
  * - Reads live persisted plan data dynamically (not a stale snapshot)
  * - Atomically increments view_count on successful retrieval
  * - Returns null (triggering safe 404) for invalid, nonexistent, or revoked tokens
- * 
+ *
  * @param {string} rawToken - Bearer token from the public share URL
  * @param {object} [db] - Optional Database instance
  * @returns {object|null} Sanitized public plan DTO or null

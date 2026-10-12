@@ -31,13 +31,14 @@ Gemini requests are centralized through `backend/services/geminiClient.js`, whic
 - Transient error classification & exponential backoff with jitter
 - Header `Retry-After` parsing
 
-All 6 backend generation models delegate requests to `callGemini(prompt, options)`:
-1. `backend/models/leanCanvas.js` (`generateLeanCanvas`)
-2. `backend/models/competitorsModel.js` (`generateCompetitors`)
-3. `backend/models/mvpGenerator.js` (`generateMVP`)
-4. `backend/models/personasModel.js` (`generatePersonas`)
-5. `backend/models/pitchModel.js` (`generatePitch`)
-6. `backend/models/revenueModel.js` (`generateRevenue`)
+All backend generation models delegate requests to `callGemini(prompt, options)`:
+1. `backend/models/briefModel.js` (`generateDraftBrief` - Chunk 7.2)
+2. `backend/models/leanCanvas.js` (`generateLeanCanvas`)
+3. `backend/models/competitorsModel.js` (`generateCompetitors`)
+4. `backend/models/mvpGenerator.js` (`generateMVP`)
+5. `backend/models/personasModel.js` (`generatePersonas`)
+6. `backend/models/pitchModel.js` (`generatePitch`)
+7. `backend/models/revenueModel.js` (`generateRevenue`)
 
 ### Environment & Tuning Configuration
 
@@ -55,8 +56,10 @@ All 6 backend generation models delegate requests to `callGemini(prompt, options
 
 ## 3. Purpose & Application Features
 
-The model handles structured generative reasoning for all 6 startup intelligence modules:
+The model handles structured generative reasoning for the structured Startup Brief and all 6 startup intelligence modules:
 
+0. **Draft Startup Brief** (`/api/brief/draft`):
+   - Generates a structured canonical Startup Brief (AI interpretations, explicit assumptions, and non-blocking clarification questions) from the founder's raw business idea intake before module generation.
 1. **Lean Canvas Generation** (`/api/lean-canvas`):
    - Generates a 9-box Lean Canvas (problem, solution, key metrics, UVP, channels, customer segments, cost structure, revenue streams, unfair advantage).
 2. **Competitor Analysis** (`/api/competitors`):

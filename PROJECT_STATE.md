@@ -68,12 +68,14 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 ## 6. Current Status
 
 - **Phase**: Phase 7 — AI Pipeline Optimization & Idea Refinement
-- **Current Chunk**: Phase 7.0 — AI Pipeline & Input-to-Output Audit
-- **Status**: Completed (Audit Only — Zero Code Changes)
+- **Current Chunk**: Chunk 7.2 — Structured Startup Brief & Refinement Workflow
+- **Status**: COMPLETED
 - **Phase 5 Status**: COMPLETED
 - **Phase 6 Status**: COMPLETED
-- **Phase 7.0 Status**: COMPLETED
-- **Next Recommended Milestone**: Chunk 7.1 — Prompt Sanitization, Defect Remediation & Backend Schema Validation
+- **Phase 7.0 Status**: COMPLETED (Audit Only)
+- **Chunk 7.1 Status**: COMPLETED (`fix: validate AI outputs and preserve startup inputs`)
+- **Chunk 7.2 Status**: COMPLETED (`feat: add structured startup brief refinement workflow`)
+- **Next Recommended Milestone**: Post-Chunk 7.2 Roadmap Milestones
 
 ---
 
@@ -479,10 +481,7 @@ Single source of truth for the project lifecycle, architecture, progress, known 
 - **Phase 7: AI Pipeline Optimization & Idea Refinement (ACTIVE)**
   - Chunk 7.0: AI Pipeline & Input-to-Output Audit (Completed - Audit Only)
   - Chunk 7.1: AI Reliability Foundation (Completed - `fix: validate AI outputs and preserve startup inputs`)
-  - Chunk 7.2: Structured Startup Brief Schema & Single-Call Generator (Scheduled)
-  - Chunk 7.3: Interactive Refinement UI & Brief Confirmation Workflow (Scheduled)
-  - Chunk 7.4: Coordinated 6-Module Generation & Cross-Module Contextual Integration (Scheduled)
-  - Chunk 7.5: Persistence, Migration, History, Export & Public Sharing Compatibility (Scheduled)
+  - Chunk 7.2: Structured Startup Brief & Refinement Workflow (Completed - `feat: add structured startup brief refinement workflow`)
 
 ---
 
@@ -578,15 +577,59 @@ Key deliverables:
 - **Code Hygiene**: `git diff --check` executed with 0 trailing whitespace or formatting warnings.
 
 ### 5. Explicit Scope Boundaries & Next Milestone
-- **Not Included in Chunk 7.1**: The interactive Startup Brief refinement workflow, `/refine` frontend page, single-call Draft Brief generator endpoint, and SQLite Migration 006 (`brief TEXT` column) were intentionally deferred.
-- **Next Milestone**: **Chunk 7.2 — Structured Startup Brief Schema & Single-Call Generator**.
+- **Completed in Chunk 7.1**: Input sanitization, deterministic output validators for 6 modules, revenue data preservation, presentation slide heading alignment, and honest dashboard empty states.
+- **Next Milestone**: **Chunk 7.2 — Structured Startup Brief & Refinement Workflow**.
+
+---
+
+## 7.14 Completed in Chunk 7.2 — Structured Startup Brief & Refinement Workflow
+
+### 1. Milestone Overview & Objectives
+Chunk 7.2 implements the complete end-to-end workflow transforming raw founder input into a structured, editable, user-confirmed Startup Brief that serves as the canonical foundation for all six AI modules:
+- **Founder Journey**: Raw idea input (`/start`) ──► Single Gemini Call Draft Brief (`POST /api/brief/draft`) ──► Review & Refine UI (`/refine`) ──► Founder Edits & Explicit Confirmation ──► Parallel 6-Module Generation ──► Persist & Render Dashboard (`/dashboard`).
+- **Provenance & Strict Non-Fabrication**: Strictly distinguishes founder-confirmed facts, AI-generated interpretations, explicit assumptions, and material unknowns/clarification questions. Never invents traction, revenue, or competitor metrics.
+- **Single AI Call**: Exactly 1 Gemini API call drafts the structured brief, preserving quota and rate limits.
+- **Canonical Versioned Schema**: Schema version 1 with deterministic validator (`validateStartupBrief`), defensive alias resolution, and lifecycle transition tracking (`draft` ──► `confirmed`).
+- **Downstream Generation Integration**: All six module generators consume the confirmed brief via enhanced context builder (`buildStartupPromptContext`).
+- **Zero-Breaking Persistence**: Migration 006 adds nullable `brief TEXT` to `plans`. Legacy plans (`brief = NULL`) load and render seamlessly; anonymous trial claims and private data isolation in public shares remain protected.
+
+### 2. Summary of Implementation
+
+#### Canonical Schema & Validation (`backend/utils/briefValidator.js`)
+- Enforces strict versioning (`schemaVersion: 1`, `briefVersion: 1`, `status: 'draft' | 'confirmed'`).
+- Preserves raw founder intake in `rawInput` without rewriting.
+- Segregates `facts` (founder-supplied/confirmed), `aiInterpretations` (category, businessModel, targetMarketDynamics, coreValueProposition), `assumptions` (propositions with `status: 'confirmed' | 'unverified'`), and `clarificationQuestions` (non-blocking questions with `founderAnswer`).
+- Normalizes aliases defensively (`assumption`/`statement`, `status`/`confirmed`, `answer`/`founderAnswer`, `category`/`context`).
+- Throws `BriefValidationError` (subclass of `SchemaValidationError`) on malformed structures.
+
+#### Single-Call AI Draft Generator (`backend/models/briefModel.js`, `backend/controllers/briefController.js`)
+- Mounted at `POST /api/brief/draft` (with `/api/plans/brief/draft` alias for compatibility).
+- Protected by `createAiGenerationLimiter()` (10 req/15 min) and trial quota checks (`req.user` check or anonymous `trial_session_id` limit).
+- Executes exactly 1 Gemini call via `geminiClient.callGemini` targeting `models/gemini-3.8-flash`. Prompt strictly instructs Gemini to distinguish facts vs interpretations vs assumptions vs unknowns and return valid JSON. Output is validated using `validateStartupBrief`.
+- Safe HTTP 400 and 502 error mapping via `sendApiError`, scrubbing internal prompts, stack traces, and API keys.
+
+#### Refinement UI & Confirmation Flow (`frontend/src/pages/RefineBriefPage.js`, `/refine`)
+- Intercepts raw idea submission on `IdeaInputPage.js`: runs pre-flight trial check, requests draft brief via `POST /api/brief/draft`, stores `draftBrief` in `localStorage`, and navigates to `/refine`.
+- Founder can edit facts, view AI interpretations, toggle verified status, edit/add/delete assumptions, and answer optional clarification questions without being blocked.
+- Explicit confirmation required: clicking "Confirm Brief & Generate All Modules" marks status as `confirmed`, stamps `confirmedAt`, dispatches all 6 module endpoints in parallel with the canonical brief, persists to SQLite via `POST /api/plans`, updates active `localStorage` session, and navigates to `/dashboard`.
+- Preserves user edits on recoverable retry.
+
+#### Generator Pipeline Integration (`backend/utils/promptUtils.js`)
+- `buildStartupPromptContext(data)` inspects `data.brief` (if present) and enriches prompt context with confirmed category, business model, market dynamics, verified assumptions, and founder clarification answers across all 6 models.
+
+#### Persistence, Migration 006 & Compatibility
+- Created `backend/db/migrations/006_add_brief_to_plans.sql`: `ALTER TABLE plans ADD COLUMN brief TEXT;`.
+- `planService.js`: Formats `brief` on select, inserts on create, updates on patch, and preserves `brief` during anonymous plan claim.
+- Legacy plans (`brief = NULL`) load, render, export, and reopen cleanly without fabricating missing data.
+- Public sharing (`planShareService.js`): `toPublicSharedPlan` strictly sanitizes the brief, suppressing `rawInput`, private founder notes, and unanswered clarification questions.
+- Dashboard tabs: `DashboardTabs.js` renders `<BriefTab />` with file icon, overview highlights confirmed brief card.
 
 ---
 
 ## 10. Git State
 
 - **Branch**: `main`
-- **Pre-Chunk Commit**: `32d11a0` (chore: add CI checks and remove unused dependencies)
+- **Pre-Chunk Commit**: `0768377` (fix: validate AI outputs and preserve startup inputs)
 - **Phase 1 Status**: COMPLETED
 - **Phase 2 Status**: COMPLETED
 - **Phase 3 Status**: COMPLETED
@@ -595,6 +638,7 @@ Key deliverables:
 - **Phase 6 Status**: COMPLETED
 - **Phase 7.0 Status**: COMPLETED (Audit Only)
 - **Chunk 7.1 Status**: COMPLETED (`fix: validate AI outputs and preserve startup inputs`)
+- **Chunk 7.2 Status**: COMPLETED (`feat: add structured startup brief refinement workflow`)
 
 ---
 
@@ -602,6 +646,13 @@ Key deliverables:
 
 | Verification Check | Result | Details |
 |---|---|---|
+| **Chunk 7.2 Brief Schema & AI Draft Suite (8 suites)** | PASS | `backend/tests/briefSchema.test.js`: Verifies valid draft and confirmed brief validation, rejection of malformed outputs, optional founder inputs, facts vs interpretations vs assumptions vs unknowns separation, non-blocking questions, safe error responses without key leakage, and single Gemini call verification. |
+| **Chunk 7.2 Persistence & Migration 006 Suite (7 suites)** | PASS | `backend/tests/briefPersistence.test.js`: Verifies Migration 006 (`brief TEXT`), plan save and update with brief, legacy plan backward compatibility (`brief = NULL`), trial plan claim preserving brief, public share DTO sanitization, and owner isolation. |
+| **Chunk 7.2 RefineBriefPage Frontend Suite (4 tests)** | PASS | `frontend/src/pages/RefineBriefPage.test.js`: Verifies draft brief rendering, empty state handling, interactive editing and confirmation dispatch of all 6 modules, and graceful partial generation degradation. |
+| **Backend Full Test Suite (25 suites)** | PASS | `npm test` in `backend` runs all 25 test suites cleanly with 0 errors across 270+ assertions. |
+| **Frontend Full Test Suite (14 suites, 103 tests)** | PASS | `npm test -- --watchAll=false src` runs all 14 frontend test suites cleanly (103/103 tests pass) with 0 errors. |
+| **Frontend Production Build** | PASS | `npm run build` compiles cleanly (exit code 0) with zero JavaScript errors. |
+| **Git Diff Code Hygiene Check** | PASS | `git diff --check` executes cleanly with 0 trailing whitespace, carriage-return, or formatting warnings. |
 | **Chunk 7.1 Prompt Sanitization Suite (4 suites)** | PASS | `backend/tests/promptSanitization.test.js`: Verifies `normalizeInput`, `buildStartupPromptContext`, summary inclusion, persona problem injection, and absence of literal `"undefined"`/`"null"` strings across all 6 model prompts. |
 | **Chunk 7.1 Response Validators Suite (7 suites)** | PASS | `backend/tests/responseValidators.test.js`: Deterministic validation and rejection of malformed outputs across all 6 generative modules, plus safe HTTP 502 `MODEL_OUTPUT_INVALID` error mapping without secret leakage. |
 | **Backend Full Test Suite (23 suites)** | PASS | `npm test` in `backend` runs all 23 test suites cleanly with 0 errors across 250+ assertions. |

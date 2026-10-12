@@ -76,6 +76,7 @@ const competitorRoutes = require('./routes/competitors');
 const planRoutes = require('./routes/plans');
 const authRoutes = require('./routes/auth');
 const sharedRoutes = require('./routes/shared');
+const briefRoutes = require('./routes/brief');
 
 app.use('/api/lean-canvas', leanCanvasRoutes);
 app.use('/api/mvp', mvpRoutes);
@@ -84,6 +85,7 @@ app.use('/api/pitch', pitchRoutes);
 app.use('/api/personas', personaRoutes);
 app.use('/api/competitors', competitorRoutes);
 app.use('/api/plans', planRoutes);
+app.use('/api/brief', briefRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/shared', sharedRoutes);
 

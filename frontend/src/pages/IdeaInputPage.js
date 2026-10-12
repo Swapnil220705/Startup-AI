@@ -62,7 +62,9 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
         'competitors',
         'generationErrors',
         'currentPlanId',
-        'planPersistenceStatus'
+        'planPersistenceStatus',
+        'draftBrief',
+        'brief'
       ];
       GENERATION_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
 
@@ -76,161 +78,25 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
         summary: formData.summary ? String(formData.summary).trim() : ''
       };
 
-      console.log('Sending payload:', payload);
+      console.log('Drafting Startup Brief with payload:', payload);
 
-      const endpoints = [
-        { key: 'leanCanvas', label: 'Lean Canvas', url: '/api/lean-canvas' },
-        { key: 'mvp', label: 'MVP Plan', url: '/api/mvp' },
-        { key: 'revenue', label: 'Revenue Model', url: '/api/revenue' },
-        { key: 'pitch', label: 'Pitch Deck', url: '/api/pitch' },
-        { key: 'personas', label: 'User Personas', url: '/api/personas' },
-        { key: 'competitors', label: 'Competitor Analysis', url: '/api/competitors' }
-      ];
+      // Single-call AI generator to draft canonical Startup Brief
+      const briefRes = await api.post('/api/brief/draft', payload);
+      const draftBrief = briefRes.data?.data;
 
-      // Call all backend endpoints in parallel using Promise.allSettled
-      const settledResults = await Promise.allSettled(
-        endpoints.map(ep => api.post(ep.url, payload))
-      );
-
-      const successfulModules = [];
-      const failedModules = [];
-      const persistedModules = {
-        leanCanvas: null,
-        mvp: null,
-        revenue: null,
-        pitch: null,
-        personas: null,
-        competitors: null
-      };
-
-      settledResults.forEach((result, idx) => {
-        const ep = endpoints[idx];
-        if (result.status === 'fulfilled' && result.value?.data) {
-          const resData = result.value.data;
-          successfulModules.push(ep.label);
-
-          if (ep.key === 'leanCanvas') {
-            persistedModules.leanCanvas = resData;
-            localStorage.setItem('leanCanvas', JSON.stringify(resData));
-          } else if (ep.key === 'mvp') {
-            const mvpRes = result.value;
-            persistedModules.mvp = mvpRes.data;
-            localStorage.setItem('mvp', JSON.stringify(mvpRes.data));
-          } else if (ep.key === 'revenue') {
-            persistedModules.revenue = resData;
-            localStorage.setItem('revenue', JSON.stringify(resData));
-          } else if (ep.key === 'pitch') {
-            persistedModules.pitch = resData;
-            localStorage.setItem('pitch', JSON.stringify(resData));
-          } else if (ep.key === 'personas') {
-            const personasData = resData.personas || resData;
-            persistedModules.personas = personasData;
-            localStorage.setItem('personas', JSON.stringify(personasData));
-          } else if (ep.key === 'competitors') {
-            const competitorsData = resData.competitors || resData;
-            persistedModules.competitors = competitorsData;
-            localStorage.setItem('competitors', JSON.stringify(competitorsData));
-          }
-        } else {
-          const errMessage = result.reason?.response?.data?.error?.message ||
-            result.reason?.response?.data?.error ||
-            result.reason?.message ||
-            'Request failed';
-          failedModules.push({ label: ep.label, error: errMessage });
-          console.warn(`[Generation] Module ${ep.label} failed:`, errMessage);
-        }
-      });
-
-      // Case A: Complete generation failure (0/6 succeeded)
-      if (successfulModules.length === 0) {
-        setIsLoading(false);
-        const detailedErrors = failedModules.map(m => `• ${m.label}: ${m.error}`).join('\n');
-        alert(`Failed to generate business plan. All AI generation requests failed:\n\n${detailedErrors}\n\nPlease check your server or connection and try again.`);
-        return;
+      if (!draftBrief) {
+        throw new Error('Failed to generate draft Startup Brief from server.');
       }
 
-      // Always store formData when at least one module generated successfully
+      // Store form data and draft brief for refinement page
       localStorage.setItem('formData', JSON.stringify(formData));
-
-      // Case B: Partial generation (1 to 5 succeeded)
-      let genErrorsObj = null;
-      if (failedModules.length > 0) {
-        genErrorsObj = {
-          failedModules: failedModules.map(m => m.label),
-          successfulModules: successfulModules
-        };
-        localStorage.setItem('generationErrors', JSON.stringify(genErrorsObj));
-      } else {
-        localStorage.removeItem('generationErrors');
-      }
-
-      // Step 3: Persist plan to backend database via POST /api/plans
-      const isPartial = failedModules.length > 0;
-      const planPayload = {
-        startupName: formData.name,
-        industry: formData.domain || '',
-        problem: formData.problem || '',
-        solution: formData.solution || '',
-        targetAudience: formData.audience || '',
-        usp: formData.usp || '',
-        leanCanvas: persistedModules.leanCanvas,
-        mvp: persistedModules.mvp,
-        revenue: persistedModules.revenue,
-        pitch: persistedModules.pitch,
-        personas: persistedModules.personas,
-        competitors: persistedModules.competitors,
-        generationStatus: isPartial ? 'partial' : 'completed',
-        generationErrors: genErrorsObj
-      };
-
-      try {
-        const persistRes = await api.post('/api/plans', planPayload);
-        const serverPlanId = persistRes.data?.data?.id;
-        if (serverPlanId) {
-          localStorage.setItem('currentPlanId', serverPlanId);
-          localStorage.setItem('planPersistenceStatus', 'saved');
-          console.log(`[Persistence] Plan persisted successfully with ID: ${serverPlanId}`);
-        } else {
-          localStorage.setItem('planPersistenceStatus', 'save_failed');
-          localStorage.removeItem('currentPlanId');
-          console.warn('[Persistence] Plan persisted but server did not return an ID');
-        }
-      } catch (persistErr) {
-        if (persistErr.response?.status === 403 && persistErr.response?.data?.error?.code === 'TRIAL_LIMIT_REACHED') {
-          console.warn('[Persistence] Anonymous trial limit reached');
-          localStorage.setItem('planPersistenceStatus', 'trial_limit_reached');
-          setIsLoading(false);
-          openAuthModal({
-            title: 'Free Trial Plan Already Saved',
-            subtitle: 'Your free trial plan is already saved. Sign in to create more startup plans.',
-            onAuthSuccess: async () => {
-              try {
-                const retryRes = await api.post('/api/plans', planPayload);
-                const retryId = retryRes.data?.data?.id;
-                if (retryId) {
-                  localStorage.setItem('currentPlanId', retryId);
-                  localStorage.setItem('planPersistenceStatus', 'saved');
-                }
-              } catch (retryErr) {
-                console.error('[Persistence] Retry persistence failed after auth:', retryErr.message);
-              }
-              navigate('/dashboard');
-            }
-          });
-          return;
-        } else {
-          // If database persistence fails, preserve generated localStorage data and flag save_failed
-          console.error('[Persistence] Failed to persist plan to server:', persistErr.message);
-          localStorage.setItem('planPersistenceStatus', 'save_failed');
-          localStorage.removeItem('currentPlanId');
-        }
-      }
+      localStorage.setItem('draftBrief', JSON.stringify(draftBrief));
 
       setIsLoading(false);
-      navigate('/dashboard');
+      navigate('/refine');
     } catch (error) {
       console.error('API Error:', error);
-      alert(`Failed to generate business plan: ${error.message}`);
+      alert(`Failed to draft Startup Brief: ${error.response?.data?.error?.message || error.message}`);
       setIsLoading(false);
     }
   };
@@ -279,14 +145,14 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
             </div>
             <Brain className="w-8 h-8 text-indigo-600 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 animate-pulse" />
           </div>
-          
+
           <h2 className="text-3xl font-bold mb-4 bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
             Analyzing your startup idea...
           </h2>
           <p className={`text-lg mb-6 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            Our AI is generating your comprehensive business plan
+            Our AI is drafting your structured Startup Brief
           </p>
-          
+
           <div className="flex items-center justify-center space-x-2 mb-8">
             <div className="flex space-x-1">
               {[1,2,3].map((i) => (
@@ -294,14 +160,14 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
               ))}
             </div>
           </div>
-          
+
           <div className={`max-w-md mx-auto p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white/50 border border-gray-200'} backdrop-blur-sm`}>
             <div className="flex items-center justify-between mb-4">
               <Rocket className="w-5 h-5 text-indigo-600" />
-              <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Processing...</span>
+              <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Structuring Brief...</span>
             </div>
             <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
-              This may take 30-60 seconds. We're creating your lean canvas, MVP plan, competitor analysis, and investor pitch.
+              This takes only a few moments. We're preparing your verified facts, interpretations, and assumptions for review.
             </p>
           </div>
         </div>
@@ -319,7 +185,7 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
       </div>
 
       <Header navigate={navigate} isDark={isDark} toggleTheme={toggleTheme} />
-      
+
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 relative z-10">
         {/* Enhanced Header Section */}
         <div className={`text-center mb-16 transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
@@ -328,7 +194,7 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
             <span>AI-Powered Business Planning</span>
             <Sparkles className="w-4 h-4" />
           </div>
-          
+
           <h1 className="text-4xl md:text-5xl font-bold mb-6 leading-tight">
             <span className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
               Tell us about your
@@ -338,9 +204,9 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
               startup idea
             </span>
           </h1>
-          
+
           <p className={`text-xl mb-8 max-w-3xl mx-auto leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-            Provide some basic information and we'll generate a comprehensive business plan, 
+            Provide some basic information and we'll generate a comprehensive business plan,
             competitor analysis, and investor-ready pitch deck for you.
           </p>
 
@@ -355,7 +221,7 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
               </span>
             </div>
             <div className={`w-full bg-gray-200 rounded-full h-2 ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
-              <div 
+              <div
                 className="bg-gradient-to-r from-indigo-500 to-purple-600 h-2 rounded-full transition-all duration-500 ease-out"
                 style={{ width: `${progressPercentage}%` }}
               ></div>
@@ -367,25 +233,25 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
             {steps.map((step, index) => {
               const isCompleted = step.fields.every(field => completedFields.has(field));
               const isActive = step.fields.some(field => completedFields.has(field)) && !isCompleted;
-              
+
               return (
                 <div key={index} className="flex flex-col items-center">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-2 transition-all duration-300 ${
-                    isCompleted 
-                      ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg' 
-                      : isActive 
-                        ? 'bg-indigo-100 text-indigo-600 border-2 border-indigo-500' 
-                        : isDark 
-                          ? 'bg-gray-800 text-gray-500 border border-gray-700' 
+                    isCompleted
+                      ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg'
+                      : isActive
+                        ? 'bg-indigo-100 text-indigo-600 border-2 border-indigo-500'
+                        : isDark
+                          ? 'bg-gray-800 text-gray-500 border border-gray-700'
                           : 'bg-gray-100 text-gray-400 border border-gray-300'
                   }`}>
                     {isCompleted ? <CheckCircle className="w-6 h-6" /> : step.icon}
                   </div>
                   <span className={`text-xs font-medium ${
-                    isCompleted || isActive 
-                      ? 'text-indigo-600' 
-                      : isDark 
-                        ? 'text-gray-500' 
+                    isCompleted || isActive
+                      ? 'text-indigo-600'
+                      : isDark
+                        ? 'text-gray-500'
                         : 'text-gray-400'
                   }`}>
                     {step.title}
@@ -409,18 +275,18 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
               <div className="flex items-center space-x-2">
                 {['name', 'domain'].map(field => (
                   <div key={field} className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                    completedFields.has(field) 
-                      ? 'bg-green-500' 
-                      : formData[field] 
-                        ? 'bg-yellow-500' 
-                        : isDark 
-                          ? 'bg-gray-700' 
+                    completedFields.has(field)
+                      ? 'bg-green-500'
+                      : formData[field]
+                        ? 'bg-yellow-500'
+                        : isDark
+                          ? 'bg-gray-700'
                           : 'bg-gray-300'
                   }`}></div>
                 ))}
               </div>
             </div>
-            
+
             <div className="grid md:grid-cols-2 gap-8">
               <div className="space-y-2">
                 <label className="block text-sm font-semibold mb-3 flex items-center">
@@ -433,22 +299,22 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
                   className={`w-full px-6 py-4 rounded-xl border-2 transition-all duration-300 text-lg ${
-                    isDark 
-                      ? 'bg-gray-700/50 border-gray-600 focus:border-indigo-500 focus:bg-gray-700' 
+                    isDark
+                      ? 'bg-gray-700/50 border-gray-600 focus:border-indigo-500 focus:bg-gray-700'
                       : 'bg-gray-50 border-gray-300 focus:border-indigo-500 focus:bg-white'
                   } focus:outline-none shadow-sm hover:shadow-md`}
                   placeholder="Enter your startup name"
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <label className="block text-sm font-semibold mb-3">Business Domain</label>
                 <select
                   value={formData.domain}
                   onChange={(e) => handleInputChange('domain', e.target.value)}
                   className={`w-full px-6 py-4 rounded-xl border-2 transition-all duration-300 text-lg ${
-                    isDark 
-                      ? 'bg-gray-700/50 border-gray-600 focus:border-indigo-500 focus:bg-gray-700' 
+                    isDark
+                      ? 'bg-gray-700/50 border-gray-600 focus:border-indigo-500 focus:bg-gray-700'
                       : 'bg-gray-50 border-gray-300 focus:border-indigo-500 focus:bg-white'
                   } focus:outline-none shadow-sm hover:shadow-md`}
                 >
@@ -473,18 +339,18 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
               <div className="flex items-center space-x-2">
                 {['problem', 'solution'].map(field => (
                   <div key={field} className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                    completedFields.has(field) 
-                      ? 'bg-green-500' 
-                      : formData[field] 
-                        ? 'bg-yellow-500' 
-                        : isDark 
-                          ? 'bg-gray-700' 
+                    completedFields.has(field)
+                      ? 'bg-green-500'
+                      : formData[field]
+                        ? 'bg-yellow-500'
+                        : isDark
+                          ? 'bg-gray-700'
                           : 'bg-gray-300'
                   }`}></div>
                 ))}
               </div>
             </div>
-            
+
             <div className="space-y-8">
               <div className="space-y-2">
                 <label className="block text-sm font-semibold mb-3 flex items-center">
@@ -497,14 +363,14 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
                   value={formData.problem}
                   onChange={(e) => handleInputChange('problem', e.target.value)}
                   className={`w-full px-6 py-4 rounded-xl border-2 transition-all duration-300 text-lg ${
-                    isDark 
-                      ? 'bg-gray-700/50 border-gray-600 focus:border-indigo-500 focus:bg-gray-700' 
+                    isDark
+                      ? 'bg-gray-700/50 border-gray-600 focus:border-indigo-500 focus:bg-gray-700'
                       : 'bg-gray-50 border-gray-300 focus:border-indigo-500 focus:bg-white'
                   } focus:outline-none resize-none shadow-sm hover:shadow-md`}
                   placeholder="What problem does your startup solve? Be specific about the pain point your target customers face."
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <label className="block text-sm font-semibold mb-3 flex items-center">
                   <span className="text-red-500 mr-1">*</span>
@@ -516,8 +382,8 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
                   value={formData.solution}
                   onChange={(e) => handleInputChange('solution', e.target.value)}
                   className={`w-full px-6 py-4 rounded-xl border-2 transition-all duration-300 text-lg ${
-                    isDark 
-                      ? 'bg-gray-700/50 border-gray-600 focus:border-indigo-500 focus:bg-gray-700' 
+                    isDark
+                      ? 'bg-gray-700/50 border-gray-600 focus:border-indigo-500 focus:bg-gray-700'
                       : 'bg-gray-50 border-gray-300 focus:border-indigo-500 focus:bg-white'
                   } focus:outline-none resize-none shadow-sm hover:shadow-md`}
                   placeholder="How does your product solve this problem? Explain your approach and key features."
@@ -538,18 +404,18 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
               <div className="flex items-center space-x-2">
                 {['audience', 'usp'].map(field => (
                   <div key={field} className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                    completedFields.has(field) 
-                      ? 'bg-green-500' 
-                      : formData[field] 
-                        ? 'bg-yellow-500' 
-                        : isDark 
-                          ? 'bg-gray-700' 
+                    completedFields.has(field)
+                      ? 'bg-green-500'
+                      : formData[field]
+                        ? 'bg-yellow-500'
+                        : isDark
+                          ? 'bg-gray-700'
                           : 'bg-gray-300'
                   }`}></div>
                 ))}
               </div>
             </div>
-            
+
             <div className="space-y-8">
               <div className="space-y-2">
                 <label className="block text-sm font-semibold mb-3 flex items-center">
@@ -562,14 +428,14 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
                   value={formData.audience}
                   onChange={(e) => handleInputChange('audience', e.target.value)}
                   className={`w-full px-6 py-4 rounded-xl border-2 transition-all duration-300 text-lg ${
-                    isDark 
-                      ? 'bg-gray-700/50 border-gray-600 focus:border-indigo-500 focus:bg-gray-700' 
+                    isDark
+                      ? 'bg-gray-700/50 border-gray-600 focus:border-indigo-500 focus:bg-gray-700'
                       : 'bg-gray-50 border-gray-300 focus:border-indigo-500 focus:bg-white'
                   } focus:outline-none shadow-sm hover:shadow-md`}
                   placeholder="Who is your ideal customer? (e.g., Small business owners, Students, etc.)"
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <label className="block text-sm font-semibold mb-3 flex items-center">
                   <span className="text-red-500 mr-1">*</span>
@@ -581,14 +447,14 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
                   value={formData.usp}
                   onChange={(e) => handleInputChange('usp', e.target.value)}
                   className={`w-full px-6 py-4 rounded-xl border-2 transition-all duration-300 text-lg ${
-                    isDark 
-                      ? 'bg-gray-700/50 border-gray-600 focus:border-indigo-500 focus:bg-gray-700' 
+                    isDark
+                      ? 'bg-gray-700/50 border-gray-600 focus:border-indigo-500 focus:bg-gray-700'
                       : 'bg-gray-50 border-gray-300 focus:border-indigo-500 focus:bg-white'
                   } focus:outline-none resize-none shadow-sm hover:shadow-md`}
                   placeholder="What makes your solution unique? Why should customers choose you over competitors?"
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <label className="block text-sm font-semibold mb-3">Idea Summary (Optional)</label>
                 <textarea
@@ -596,8 +462,8 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
                   value={formData.summary}
                   onChange={(e) => handleInputChange('summary', e.target.value)}
                   className={`w-full px-6 py-4 rounded-xl border-2 transition-all duration-300 text-lg ${
-                    isDark 
-                      ? 'bg-gray-700/50 border-gray-600 focus:border-indigo-500 focus:bg-gray-700' 
+                    isDark
+                      ? 'bg-gray-700/50 border-gray-600 focus:border-indigo-500 focus:bg-gray-700'
                       : 'bg-gray-50 border-gray-300 focus:border-indigo-500 focus:bg-white'
                   } focus:outline-none resize-none shadow-sm hover:shadow-md`}
                   placeholder="Provide any additional context about your startup idea, business model, or vision..."
@@ -613,7 +479,7 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
                 Ready to validate your idea?
               </h3>
               <p className={`text-lg mb-6 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                Our AI will generate a comprehensive business plan including lean canvas, 
+                Our AI will generate a comprehensive business plan including lean canvas,
                 competitor analysis, MVP roadmap, and investor pitch deck.
               </p>
               <div className="flex items-center justify-center space-x-6 text-sm">
@@ -631,16 +497,17 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
                 </div>
               </div>
             </div>
-            
+
             <button
               type="submit"
               disabled={isLoading || !formData.name || !formData.problem || !formData.solution || !formData.audience || !formData.usp}
+              aria-label="Review & Refine Startup Brief"
               className="group bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-12 py-5 rounded-2xl text-xl font-bold hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-xl hover:shadow-2xl transform hover:scale-105 flex items-center space-x-3 mx-auto disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
-              <span>{isLoading ? 'Generating Business Plan...' : 'Generate Business Plan'}</span>
+              <span>{isLoading ? 'Drafting Startup Brief...' : 'Review & Refine Startup Brief'}</span>
               <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
             </button>
-            
+
             <p className={`text-sm mt-4 ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
               <span className="text-green-600">✓</span> Free to use • <span className="text-green-600">✓</span> No credit card required • <span className="text-green-600">✓</span> Instant results
             </p>

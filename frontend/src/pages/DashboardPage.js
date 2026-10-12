@@ -15,7 +15,8 @@ import {
   Edit3,
   Trash2,
   Share2,
-  X
+  X,
+  FileText
 } from 'lucide-react';
 import api from '../services/api';
 import Header from '../components/Header';
@@ -23,6 +24,7 @@ import { useAuth } from '../context/AuthContext';
 import ShareModal from '../components/ShareModal';
 import {
   OverviewTab,
+  BriefTab,
   LeanCanvasTab,
   MVPTab,
   RevenueTab,
@@ -84,6 +86,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
         // 1. Purge stale plan data from localStorage
         const PLAN_STORAGE_KEYS = [
           'formData',
+          'brief',
           'leanCanvas',
           'mvp',
           'revenue',
@@ -108,7 +111,8 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
         };
         localStorage.setItem('formData', JSON.stringify(restoredFormData));
 
-        // 3. Restore each available generated module (without fabricating missing data)
+        // 3. Restore each available generated module and brief (without fabricating missing data)
+        if (plan.brief) localStorage.setItem('brief', JSON.stringify(plan.brief));
         if (plan.leanCanvas) localStorage.setItem('leanCanvas', JSON.stringify(plan.leanCanvas));
         if (plan.mvp) localStorage.setItem('mvp', JSON.stringify(plan.mvp));
         if (plan.revenue) localStorage.setItem('revenue', JSON.stringify(plan.revenue));
@@ -135,6 +139,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
             audience: plan.targetAudience || plan.leanCanvas?.audience || plan.leanCanvas?.customerSegments || '',
             usp: plan.usp || plan.leanCanvas?.uniqueValueProposition || ''
           },
+          brief: plan.brief || null,
           leanCanvas: plan.leanCanvas || null,
           mvp: plan.mvp || null,
           revenue: plan.revenue || null,
@@ -191,7 +196,8 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
       // Get form data for overview
       const formData = JSON.parse(localStorage.getItem('formData') || '{}');
 
-      // Get individual data pieces
+      // Get brief and individual data pieces
+      const brief = JSON.parse(localStorage.getItem('brief') || 'null');
       const leanCanvas = JSON.parse(localStorage.getItem('leanCanvas') || 'null');
       const mvp = JSON.parse(localStorage.getItem('mvp') || 'null');
       const revenue = JSON.parse(localStorage.getItem('revenue') || 'null');
@@ -201,7 +207,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
       const genErrors = JSON.parse(localStorage.getItem('generationErrors') || 'null');
       setGenerationErrors(genErrors);
 
-      const hasAnyData = formData.name || leanCanvas || mvp || revenue || pitch || personas || competitors;
+      const hasAnyData = formData.name || brief || leanCanvas || mvp || revenue || pitch || personas || competitors;
 
       if (!hasAnyData) {
         setData(null);
@@ -211,13 +217,14 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
 
       const collectedData = {
         overview: {
-          name: formData.name || leanCanvas?.startupName || 'Your Startup',
-          industry: formData.domain || leanCanvas?.industry || '',
-          problem: formData.problem || leanCanvas?.problem || '',
-          solution: formData.solution || leanCanvas?.solution || '',
-          audience: formData.audience || leanCanvas?.audience || leanCanvas?.customerSegments || '',
-          usp: formData.usp || leanCanvas?.uniqueValueProposition || ''
+          name: formData.name || brief?.rawInput?.name || leanCanvas?.startupName || 'Your Startup',
+          industry: formData.domain || brief?.rawInput?.domain || leanCanvas?.industry || '',
+          problem: formData.problem || brief?.rawInput?.problem || leanCanvas?.problem || '',
+          solution: formData.solution || brief?.rawInput?.solution || leanCanvas?.solution || '',
+          audience: formData.audience || brief?.rawInput?.audience || leanCanvas?.audience || leanCanvas?.customerSegments || '',
+          usp: formData.usp || brief?.rawInput?.usp || leanCanvas?.uniqueValueProposition || ''
         },
+        brief: brief,
         leanCanvas: leanCanvas,
         mvp: mvp,
         revenue: revenue,
@@ -396,6 +403,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
         // Clear active session keys
         const PLAN_STORAGE_KEYS = [
           'formData',
+          'brief',
           'leanCanvas',
           'mvp',
           'revenue',
@@ -422,8 +430,8 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
   };
 
   const tabs = [
-
     { id: 'overview', label: 'Overview', icon: <Globe className="w-5 h-5" />, gradient: 'from-blue-500 to-cyan-500' },
+    { id: 'brief', label: 'Startup Brief', icon: <FileText className="w-5 h-5" />, gradient: 'from-teal-500 to-emerald-500' },
     { id: 'canvas', label: 'Lean Canvas', icon: <Target className="w-5 h-5" />, gradient: 'from-indigo-500 to-purple-500' },
     { id: 'mvp', label: 'MVP Plan', icon: <Zap className="w-5 h-5" />, gradient: 'from-yellow-500 to-orange-500' },
     { id: 'revenue', label: 'Revenue', icon: <DollarSign className="w-5 h-5" />, gradient: 'from-green-500 to-emerald-500' },
@@ -435,6 +443,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
   const getTabByStatus = () => {
     const completedTabs = [];
     if (data?.overview?.name) completedTabs.push('overview');
+    if (data?.brief) completedTabs.push('brief');
     if (data?.leanCanvas && Object.keys(data.leanCanvas).length > 0) completedTabs.push('canvas');
     if (data?.mvp && (data.mvp.startupName || data.mvp.technicalRequirements || data.mvp.launchTimeline || (Array.isArray(data.mvp.coreFeatures) && data.mvp.coreFeatures.length > 0))) completedTabs.push('mvp');
     if (data?.revenue && Array.isArray(data.revenue) && data.revenue.length > 0) completedTabs.push('revenue');
@@ -928,6 +937,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
               )}
 
               {activeTab === 'overview' && <OverviewTab data={data} isDark={isDark} />}
+              {activeTab === 'brief' && <BriefTab brief={data.brief} isDark={isDark} navigate={navigate} />}
               {activeTab === 'canvas' && <LeanCanvasTab data={data} isDark={isDark} navigate={navigate} />}
               {activeTab === 'mvp' && <MVPTab data={data} isDark={isDark} navigate={navigate} />}
               {activeTab === 'revenue' && <RevenueTab data={data} isDark={isDark} navigate={navigate} />}

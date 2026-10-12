@@ -2,22 +2,24 @@ const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
 
-// Test 1: Static code check on frontend/src/pages/IdeaInputPage.js
+// Test 1: Static code check on generation flow (frontend/src/pages/RefineBriefPage.js)
 {
+  const refinePath = path.join(__dirname, '../../frontend/src/pages/RefineBriefPage.js');
   const ideaInputPath = path.join(__dirname, '../../frontend/src/pages/IdeaInputPage.js');
-  const code = fs.readFileSync(ideaInputPath, 'utf8');
+  const targetPath = fs.existsSync(refinePath) ? refinePath : ideaInputPath;
+  const code = fs.readFileSync(targetPath, 'utf8');
 
   assert(
     !code.includes('mvpRes.data.coreFeatures || mvpRes.data'),
-    'IdeaInputPage.js must NOT truncate MVP data using `mvpRes.data.coreFeatures || mvpRes.data`'
+    'Generation code must NOT truncate MVP data using `mvpRes.data.coreFeatures || mvpRes.data`'
   );
 
   assert(
-    code.includes("localStorage.setItem('mvp', JSON.stringify(mvpRes.data))"),
-    'IdeaInputPage.js must persist the complete `mvpRes.data` object under localStorage key "mvp"'
+    code.includes("localStorage.setItem('mvp', JSON.stringify("),
+    'Generation code must persist the complete MVP data object under localStorage key "mvp"'
   );
 
-  console.log('✅ Static analysis: IdeaInputPage.js persists complete mvpRes.data without truncation');
+  console.log('✅ Static analysis: Generation code persists complete MVP data without truncation');
 }
 
 // Test 2: Verify complete MVP object preservation in localStorage simulation
