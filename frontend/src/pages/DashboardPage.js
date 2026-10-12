@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Globe, 
-  Target, 
-  Zap, 
-  DollarSign, 
-  BarChart3, 
-  Users, 
+import {
+  Globe,
+  Target,
+  Zap,
+  DollarSign,
+  BarChart3,
+  Users,
   Download,
   Sparkles,
   TrendingUp,
@@ -190,7 +190,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
 
       // Get form data for overview
       const formData = JSON.parse(localStorage.getItem('formData') || '{}');
-      
+
       // Get individual data pieces
       const leanCanvas = JSON.parse(localStorage.getItem('leanCanvas') || 'null');
       const mvp = JSON.parse(localStorage.getItem('mvp') || 'null');
@@ -440,7 +440,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
     if (data?.revenue && Array.isArray(data.revenue) && data.revenue.length > 0) completedTabs.push('revenue');
     if (data?.competitors && Array.isArray(data.competitors) && data.competitors.length > 0) completedTabs.push('competitors');
     if (data?.personas && Array.isArray(data.personas) && data.personas.length > 0) completedTabs.push('personas');
-    
+
     return completedTabs;
   };
 
@@ -480,13 +480,13 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
               The requested startup plan could not be found in the database. It may have been removed or the link is invalid.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <button 
+              <button
                 onClick={() => navigate('/my-plans')}
                 className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg"
               >
                 Back to My Plans
               </button>
-              <button 
+              <button
                 onClick={() => navigate('/start')}
                 className={`w-full sm:w-auto px-6 py-3 rounded-xl font-semibold border transition-all duration-200 ${
                   isDark ? 'border-gray-700 hover:bg-gray-800 text-gray-300' : 'border-gray-300 hover:bg-gray-100 text-gray-700'
@@ -515,7 +515,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
               {loadError}
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <button 
+              <button
                 onClick={() => {
                   const searchString = window.location.search || (currentPath && currentPath.includes('?') ? '?' + currentPath.split('?')[1] : '');
                   const pId = new URLSearchParams(searchString).get('plan');
@@ -527,7 +527,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
                 <RefreshCw className="w-4 h-4" />
                 <span>Retry</span>
               </button>
-              <button 
+              <button
                 onClick={() => navigate('/my-plans')}
                 className={`w-full sm:w-auto px-6 py-3 rounded-xl font-semibold border transition-all duration-200 ${
                   isDark ? 'border-gray-700 hover:bg-gray-800 text-gray-300' : 'border-gray-300 hover:bg-gray-100 text-gray-700'
@@ -555,7 +555,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
             <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-8`}>
               It looks like you haven't created a business plan yet. Let's get started!
             </p>
-            <button 
+            <button
               onClick={() => navigate('/start')}
               className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-4 rounded-2xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
             >
@@ -680,7 +680,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
                     <span>{completedTabs.length} sections completed</span>
                   </div>
                   {persistenceStatus === 'saved' && (
-                    <div 
+                    <div
                       className={`inline-flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-semibold ${isDark ? 'bg-blue-900/30 text-blue-400 border border-blue-800' : 'bg-blue-100 text-blue-800 border border-blue-200'}`}
                       title={currentPlanId ? `Persisted Plan ID: ${currentPlanId}` : 'Saved to database'}
                     >
@@ -772,7 +772,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
                   AI-powered insights and comprehensive analysis for your startup journey
                 </p>
               </div>
-              
+
               {/* Quick Stats */}
               <div className="grid grid-cols-2 gap-4 lg:gap-6 mt-8 lg:mt-0">
                 <div className={`p-4 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg backdrop-blur-sm`}>
@@ -812,7 +812,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
               <div className="mb-6">
                 <h3 className="text-lg font-semibold mb-2">Navigation</h3>
                 <div className={`w-full bg-gray-200 rounded-full h-2 ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
-                  <div 
+                  <div
                     className="bg-gradient-to-r from-indigo-600 to-purple-600 h-2 rounded-full transition-all duration-500"
                     style={{ width: `${(completedTabs.length / tabs.length) * 100}%` }}
                   ></div>
@@ -821,19 +821,19 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
                   {completedTabs.length} of {tabs.length} sections completed
                 </p>
               </div>
-              
+
               <div className="space-y-2">
                 {tabs.map((tab, index) => {
                   const isActive = activeTab === tab.id;
                   const isCompleted = completedTabs.includes(tab.id);
-                  
+
                   return (
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
                       className={`group relative w-full flex items-center space-x-4 px-4 py-4 rounded-2xl text-left transition-all duration-300 ${
-                        isActive 
-                          ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg transform scale-105' 
+                        isActive
+                          ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg transform scale-105'
                           : `hover:bg-gradient-to-r hover:${tab.gradient} hover:text-white ${isDark ? 'hover:bg-gray-700/50 text-gray-300' : 'hover:bg-gray-100 text-gray-700'}`
                       }`}
                     >
@@ -843,16 +843,16 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
                           <CheckCircle2 className="w-4 h-4 text-green-500" />
                         </div>
                       )}
-                      
+
                       {/* Icon with gradient background */}
                       <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
-                        isActive 
-                          ? 'bg-white/20' 
+                        isActive
+                          ? 'bg-white/20'
                           : `group-hover:bg-gradient-to-r group-hover:${tab.gradient} group-hover:text-white ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`
                       }`}>
                         {tab.icon}
                       </div>
-                      
+
                       <div className="flex-1">
                         <span className="font-medium">{tab.label}</span>
                         {isCompleted && (
@@ -861,7 +861,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
                           </div>
                         )}
                       </div>
-                      
+
                       {/* Hover Arrow */}
                       <div className={`transform transition-transform duration-300 ${isActive ? 'translate-x-0' : '-translate-x-2 group-hover:translate-x-0'}`}>
                         <div className="w-2 h-2 border-r-2 border-b-2 border-current rotate-[-45deg]"></div>
@@ -896,7 +896,7 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-1">
                         <h3 className="font-bold text-lg">Your startup plan was partially generated</h3>
-                        <button 
+                        <button
                           onClick={() => {
                             localStorage.removeItem('generationErrors');
                             setGenerationErrors(null);
@@ -928,16 +928,16 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
               )}
 
               {activeTab === 'overview' && <OverviewTab data={data} isDark={isDark} />}
-              {activeTab === 'canvas' && <LeanCanvasTab data={data} isDark={isDark} />}
-              {activeTab === 'mvp' && <MVPTab data={data} isDark={isDark} />}
-              {activeTab === 'revenue' && <RevenueTab data={data} isDark={isDark} />}
-              {activeTab === 'competitors' && <CompetitorsTab data={data} isDark={isDark} />}
-              {activeTab === 'personas' && <PersonasTab data={data} isDark={isDark} />}
+              {activeTab === 'canvas' && <LeanCanvasTab data={data} isDark={isDark} navigate={navigate} />}
+              {activeTab === 'mvp' && <MVPTab data={data} isDark={isDark} navigate={navigate} />}
+              {activeTab === 'revenue' && <RevenueTab data={data} isDark={isDark} navigate={navigate} />}
+              {activeTab === 'competitors' && <CompetitorsTab data={data} isDark={isDark} navigate={navigate} />}
+              {activeTab === 'personas' && <PersonasTab data={data} isDark={isDark} navigate={navigate} />}
               {activeTab === 'export' && (
-                <ExportTab 
-                  data={data} 
-                  navigate={navigate} 
-                  isDark={isDark} 
+                <ExportTab
+                  data={data}
+                  navigate={navigate}
+                  isDark={isDark}
                   onOpenShare={() => {
                     if (!isAuthenticated) {
                       openAuthModal({
@@ -1188,4 +1188,4 @@ const DashboardPage = ({ navigate, isDark, toggleTheme, currentPath }) => {
   );
 };
 
-export default DashboardPage;
+export default DashboardPage;

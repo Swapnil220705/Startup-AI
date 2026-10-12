@@ -1,16 +1,15 @@
 const { callGemini } = require('../services/geminiClient');
 const { parseGeminiJson } = require('../utils/jsonParser');
+const { buildStartupPromptContext } = require('../utils/promptUtils');
+const { validateLeanCanvas } = require('../utils/responseValidators');
 
 const generateLeanCanvas = async (data) => {
+  const contextBlock = buildStartupPromptContext(data);
+
   const prompt = `
   You are a Lean Canvas strategist. Create a startup Lean Canvas based on the inputs below. Be specific and concise.
 
-  Startup Name: ${data.startupName}
-  Problem: ${data.problem}
-  Solution: ${data.solution}
-  Industry: ${data.industry}
-  Target Audience: ${data.targetAudience}
-  Unique Selling Proposition: ${data.usp}
+${contextBlock}
 
   Guidelines:
   - Avoid filler or vague responses like "N/A", "unknown", or placeholders.
@@ -34,8 +33,12 @@ const generateLeanCanvas = async (data) => {
 
   try {
     const rawText = await callGemini(prompt, { context: 'Lean Canvas' });
-    return parseGeminiJson(rawText);
+    const parsed = parseGeminiJson(rawText);
+    return validateLeanCanvas(parsed);
   } catch (error) {
+    if (error.name === 'SchemaValidationError') {
+      throw error;
+    }
     console.error('Gemini Lean Canvas Error:', error.response?.data || error.message);
     const modelError = new Error('Failed to generate Lean Canvas from Gemini');
     modelError.status = error.response?.status || (error.code ? 503 : 500);

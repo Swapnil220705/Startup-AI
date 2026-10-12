@@ -97,6 +97,29 @@ function parseIfString(val) {
   };
 }
 
+function extractRevenueStreams(revenueRaw) {
+  if (Array.isArray(revenueRaw)) {
+    return revenueRaw;
+  }
+  if (revenueRaw && typeof revenueRaw === 'object') {
+    if (Array.isArray(revenueRaw.revenueStreams)) {
+      return revenueRaw.revenueStreams.map((s, idx) => ({
+        model: s.stream || s.model || `Revenue Stream ${idx + 1}`,
+        description: s.description || (s.pricingModel ? `Pricing Model: ${s.pricingModel}` : ''),
+        projection: s.pricingModel || s.projection || ''
+      }));
+    }
+    if (typeof revenueRaw.revenueStreams === 'string') {
+      return [{
+        model: 'Primary Revenue Stream',
+        description: revenueRaw.revenueStreams,
+        projection: revenueRaw.expectedMonthlyRevenue || ''
+      }];
+    }
+  }
+  return [];
+}
+
 /**
  * Transforms normalized plan data into the canonical 7-slide Pitch Deck model.
  * 
@@ -108,7 +131,7 @@ export function buildPitchDeckSlides(planData) {
   const overview = data.overview;
   const leanCanvas = data.leanCanvas || {};
   const mvp = data.mvp;
-  const revenue = Array.isArray(data.revenue) ? data.revenue : [];
+  const revenue = extractRevenueStreams(data.revenue);
   const pitch = data.pitch;
   const competitors = Array.isArray(data.competitors) ? data.competitors : [];
 
@@ -196,7 +219,7 @@ export function buildBusinessPlanDocument(planData) {
   const overview = data.overview;
   const leanCanvas = data.leanCanvas || {};
   const mvp = data.mvp;
-  const revenue = Array.isArray(data.revenue) ? data.revenue : [];
+  const revenue = extractRevenueStreams(data.revenue);
   const pitch = data.pitch;
   const personas = Array.isArray(data.personas) ? data.personas : [];
   const competitors = Array.isArray(data.competitors) ? data.competitors : [];

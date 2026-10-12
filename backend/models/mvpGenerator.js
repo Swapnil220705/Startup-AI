@@ -1,16 +1,15 @@
 const { callGemini } = require('../services/geminiClient');
 const { parseGeminiJson } = require('../utils/jsonParser');
+const { buildStartupPromptContext } = require('../utils/promptUtils');
+const { validateMVP } = require('../utils/responseValidators');
 
 const generateMVP = async (data) => {
+  const contextBlock = buildStartupPromptContext(data);
+
   const prompt = `
   You are a startup product strategist. Based on the startup idea below, generate a realistic MVP plan.
 
-  Startup Name: ${data.startupName}
-  Problem: ${data.problem}
-  Solution: ${data.solution}
-  Industry: ${data.industry}
-  Target Audience: ${data.targetAudience}
-  Unique Selling Proposition: ${data.usp}
+${contextBlock}
 
   Instructions:
   - Core features should focus on *minimal functionality* to test the idea.
@@ -28,8 +27,12 @@ const generateMVP = async (data) => {
 
   try {
     const rawText = await callGemini(prompt, { context: 'MVP' });
-    return parseGeminiJson(rawText);
+    const parsed = parseGeminiJson(rawText);
+    return validateMVP(parsed);
   } catch (error) {
+    if (error.name === 'SchemaValidationError') {
+      throw error;
+    }
     console.error('Gemini MVP Error:', error.response?.data || error.message);
     const modelError = new Error('Failed to generate MVP from Gemini');
     modelError.status = error.response?.status || (error.code ? 503 : 500);

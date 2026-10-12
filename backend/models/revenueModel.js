@@ -1,16 +1,15 @@
 const { callGemini } = require('../services/geminiClient');
 const { parseGeminiJson } = require('../utils/jsonParser');
+const { buildStartupPromptContext } = require('../utils/promptUtils');
+const { validateRevenue } = require('../utils/responseValidators');
 
 const generateRevenue = async (data) => {
+  const contextBlock = buildStartupPromptContext(data);
+
   const prompt = `
   You're an expert startup revenue strategist. Based on the following startup details, generate a clear revenue and monetization model.
 
-  Startup Name: ${data.startupName}
-  Problem: ${data.problem}
-  Solution: ${data.solution}
-  Industry: ${data.industry}
-  Target Audience: ${data.targetAudience}
-  Unique Selling Proposition: ${data.usp}
+${contextBlock}
 
   Instructions:
   - Be specific and realistic — avoid generic language.
@@ -28,8 +27,12 @@ const generateRevenue = async (data) => {
 
   try {
     const rawText = await callGemini(prompt, { context: 'Revenue' });
-    return parseGeminiJson(rawText);
+    const parsed = parseGeminiJson(rawText);
+    return validateRevenue(parsed);
   } catch (error) {
+    if (error.name === 'SchemaValidationError') {
+      throw error;
+    }
     console.error('Gemini Revenue Model Error:', error.response?.data || error.message);
     const modelError = new Error('Failed to generate Revenue Model from Gemini');
     modelError.status = error.response?.status || (error.code ? 503 : 500);

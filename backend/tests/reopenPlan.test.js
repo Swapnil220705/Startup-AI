@@ -403,6 +403,53 @@ async function runReopenPlanTests() {
     console.log('✅ Passed Test O: Full plan round trip preserves every detail perfectly');
   }
 
+  // Test P: Growth opportunities survive persistence and reopening (Chunk 7.1 Requirement 3)
+  console.log('\nTest P: Revenue growth opportunities round-trip verification...');
+  {
+    const sampleRevenuePlan = {
+      startupName: 'GrowthScale AI',
+      industry: 'Enterprise B2B',
+      problem: 'Churn analysis is reactive and manual.',
+      solution: 'Predictive churn intervention platform.',
+      targetAudience: 'Customer Success VPs',
+      usp: 'Predict churn 90 days before renewal.',
+      revenue: {
+        revenueStreams: [
+          { stream: 'Pro Tier', description: 'Up to 1,000 accounts', pricingModel: '$499/mo' },
+          { stream: 'Enterprise Tier', description: 'Unlimited accounts + dedicated TAM', pricingModel: '$2,499/mo' }
+        ],
+        pricingStrategy: 'Value-based tiered subscription model with annual contract incentives',
+        expectedMonthlyRevenue: '$25,000 within 6 months of enterprise rollout',
+        growthOpportunities: [
+          'Expansion into European data privacy compliance tier',
+          'Integration marketplace revenue share with HubSpot and Salesforce'
+        ]
+      }
+    };
+
+    const savedPlan = createPlan(sampleRevenuePlan, testDb);
+    assert(savedPlan.id);
+    const retrievedPlan = getPlanById(savedPlan.id, testDb);
+    assert(retrievedPlan.revenue);
+
+    mockLocalStorage.clear();
+    const hydrated = hydrateDashboardFromPlan(retrievedPlan, mockLocalStorage);
+
+    // Verify revenue survived intact as object with growthOpportunities
+    assert.strictEqual(typeof hydrated.revenue, 'object');
+    assert.strictEqual(hydrated.revenue.pricingStrategy, sampleRevenuePlan.revenue.pricingStrategy);
+    assert.strictEqual(hydrated.revenue.expectedMonthlyRevenue, sampleRevenuePlan.revenue.expectedMonthlyRevenue);
+    assert(Array.isArray(hydrated.revenue.growthOpportunities));
+    assert.strictEqual(hydrated.revenue.growthOpportunities.length, 2);
+    assert.strictEqual(hydrated.revenue.growthOpportunities[0], 'Expansion into European data privacy compliance tier');
+
+    // Verify localStorage has the preserved JSON
+    const storedRevenue = JSON.parse(mockLocalStorage.getItem('revenue'));
+    assert.deepStrictEqual(storedRevenue.growthOpportunities, sampleRevenuePlan.revenue.growthOpportunities);
+
+    console.log('✅ Passed Test P: Revenue growth opportunities survive save, retrieve, and reopen flow');
+  }
+
   console.log('\n====================================================');
   console.log('🎉 ALL PLAN RE-OPENING & HYDRATION TESTS PASSED!');
   console.log('====================================================\n');

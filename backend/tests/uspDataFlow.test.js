@@ -47,14 +47,57 @@ async function testModelPrompt(modelName, modelFile, functionName) {
   let capturedPrompt = null;
   require.cache[axiosPath].exports.post = async (url, body) => {
     capturedPrompt = body?.contents?.[0]?.parts?.[0]?.text;
-    // Return minimal valid JSON matching what the model parses
+    // Return minimal valid JSON matching what each model validator requires
     let mockResponse = {};
-    if (modelName === 'personas') mockResponse = { personas: [] };
-    else if (modelName === 'competitors') mockResponse = { competitors: [] };
-    else if (modelName === 'mvp') mockResponse = { coreFeatures: [] };
-    else if (modelName === 'pitch') mockResponse = { elevatorPitch: 'mock' };
-    else if (modelName === 'revenue') mockResponse = { revenueStreams: 'mock' };
-    else mockResponse = { startupName: 'mock' };
+    if (modelName === 'personas') {
+      mockResponse = {
+        personas: [{
+          name: 'Persona 1',
+          age: '30',
+          occupation: 'Founder',
+          goals: 'Grow company',
+          painPoints: 'Lack of time',
+          techComfortLevel: 'High'
+        }]
+      };
+    } else if (modelName === 'competitors') {
+      mockResponse = {
+        competitors: [{
+          name: 'Competitor A',
+          description: 'Market competitor',
+          differentiator: 'Different strategy'
+        }]
+      };
+    } else if (modelName === 'mvp') {
+      mockResponse = {
+        startupName: 'AutoPitch AI',
+        technicalRequirements: 'Node.js',
+        launchTimeline: '6 weeks',
+        coreFeatures: ['Feature 1']
+      };
+    } else if (modelName === 'pitch') {
+      mockResponse = { elevatorPitch: 'mock elevator pitch' };
+    } else if (modelName === 'revenue') {
+      mockResponse = {
+        revenueStreams: ['Subscriptions'],
+        pricingStrategy: 'Tiered',
+        expectedMonthlyRevenue: '$10k',
+        growthOpportunities: ['Enterprise']
+      };
+    } else {
+      mockResponse = {
+        startupName: 'AutoPitch AI',
+        problem: 'Problem statement',
+        solution: 'Solution description',
+        uniqueValueProposition: 'USP description',
+        customerSegments: ['Founders'],
+        keyMetrics: ['MRR'],
+        channels: ['Direct'],
+        costStructure: ['Servers'],
+        revenueStreams: ['SaaS'],
+        unfairAdvantage: 'Proprietary IP'
+      };
+    }
 
     return {
       data: {

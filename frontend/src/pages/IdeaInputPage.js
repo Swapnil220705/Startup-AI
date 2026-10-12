@@ -72,7 +72,8 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
         problem: formData.problem,
         solution: formData.solution,
         targetAudience: formData.audience,
-        usp: formData.usp
+        usp: formData.usp,
+        summary: formData.summary ? String(formData.summary).trim() : ''
       };
 
       console.log('Sending payload:', payload);
@@ -116,20 +117,8 @@ const IdeaInputPage = ({ navigate, formData, setFormData, isLoading, setIsLoadin
             persistedModules.mvp = mvpRes.data;
             localStorage.setItem('mvp', JSON.stringify(mvpRes.data));
           } else if (ep.key === 'revenue') {
-            const revenueItems = [
-              {
-                model: "Primary Revenue Stream",
-                description: resData.revenueStreams,
-                projection: resData.expectedMonthlyRevenue
-              },
-              {
-                model: "Pricing Strategy",
-                description: resData.pricingStrategy,
-                projection: "Growth Phase"
-              }
-            ];
-            persistedModules.revenue = revenueItems;
-            localStorage.setItem('revenue', JSON.stringify(revenueItems));
+            persistedModules.revenue = resData;
+            localStorage.setItem('revenue', JSON.stringify(resData));
           } else if (ep.key === 'pitch') {
             persistedModules.pitch = resData;
             localStorage.setItem('pitch', JSON.stringify(resData));

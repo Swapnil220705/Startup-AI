@@ -34,6 +34,9 @@ function sendApiError(res, error, defaultMessage = 'Generation failed') {
   } else if (upstreamStatus === 429) {
     statusCode = 429;
     code = 'RATE_LIMIT_EXCEEDED';
+  } else if (errorCodeProperty === 'MODEL_OUTPUT_INVALID' || error?.name === 'SchemaValidationError') {
+    statusCode = 502;
+    code = 'MODEL_OUTPUT_INVALID';
   } else if (
     upstreamStatus === 503 ||
     upstreamStatus === 502 ||
@@ -52,6 +55,8 @@ function sendApiError(res, error, defaultMessage = 'Generation failed') {
     message = `${defaultMessage}: AI service quota or rate limit exceeded. Please wait a moment and try again.`;
   } else if (code === 'UPSTREAM_UNAVAILABLE') {
     message = `${defaultMessage}: AI service is temporarily unavailable or timed out after retries.`;
+  } else if (code === 'MODEL_OUTPUT_INVALID') {
+    message = `${defaultMessage}: AI service returned an incomplete or invalid response structure.`;
   } else if (code === 'INVALID_INPUT') {
     message = error?.message || `${defaultMessage}: Invalid request parameters.`;
   }

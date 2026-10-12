@@ -97,6 +97,27 @@ const PitchPreviewPage = ({ navigate, isDark, toggleTheme }) => {
   
   // Extract customer segments properly
   const customerSegments = data.leanCanvas?.customerSegments || [data.overview.audience];
+
+  // Extract revenue streams defensively across array and object formats
+  const rawRevenue = data.revenue;
+  let revenueStreams = [];
+  if (Array.isArray(rawRevenue)) {
+    revenueStreams = rawRevenue;
+  } else if (rawRevenue && typeof rawRevenue === 'object') {
+    if (Array.isArray(rawRevenue.revenueStreams)) {
+      revenueStreams = rawRevenue.revenueStreams.map((s, idx) => ({
+        model: s.stream || s.model || `Revenue Stream ${idx + 1}`,
+        projection: s.pricingModel || s.projection || '',
+        description: s.description || ''
+      }));
+    } else if (typeof rawRevenue.revenueStreams === 'string') {
+      revenueStreams = [{
+        model: 'Primary Revenue Stream',
+        projection: rawRevenue.expectedMonthlyRevenue || '',
+        description: rawRevenue.revenueStreams
+      }];
+    }
+  }
   
   const slides = [
     {
@@ -178,13 +199,15 @@ const PitchPreviewPage = ({ navigate, isDark, toggleTheme }) => {
       content: (
         <div>
           <h3 className="text-2xl font-bold mb-6">Revenue Streams</h3>
-          {Array.isArray(data.revenue) && data.revenue.length > 0 ? (
+          {revenueStreams.length > 0 ? (
             <div className="space-y-4">
-              {data.revenue.map((model, index) => (
+              {revenueStreams.map((model, index) => (
                 <div key={index} className={`p-4 rounded-lg ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
                   <div className="flex justify-between items-center mb-2">
                     <h4 className="font-semibold">{model.model}</h4>
-                    <span className="text-green-600 font-medium">{model.projection}</span>
+                    {model.projection && (
+                      <span className="text-green-600 font-medium">{model.projection}</span>
+                    )}
                   </div>
                   <p className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>{model.description}</p>
                 </div>
@@ -236,10 +259,10 @@ const PitchPreviewPage = ({ navigate, isDark, toggleTheme }) => {
         <div className="text-center">
           <h3 className="text-2xl font-bold mb-6">Ready to Launch</h3>
           <div className="mb-8">
-            <h4 className="font-semibold mb-3">AI-Generated Elevator Pitch:</h4>
+            <h4 className="font-semibold mb-3">Execution Summary</h4>
             <div className={`p-4 rounded-lg ${isDark ? 'bg-gray-700' : 'bg-gray-100'} mb-6`}>
               <p className="text-lg italic">
-                {data.pitch?.elevatorPitch || 'Generate a new business plan to get your elevator pitch'}
+                {data.pitch?.elevatorPitch || 'Elevator pitch not generated for this plan.'}
               </p>
             </div>
           </div>

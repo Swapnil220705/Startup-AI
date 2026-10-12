@@ -224,6 +224,34 @@ describe('exportHelpers', () => {
       expect(doc.competitors).toEqual([]);
       expect(doc.nextSteps).toHaveLength(4);
     });
+
+    test('extracts revenue streams when revenue is in object format with growth opportunities', () => {
+      const planWithObjectRevenue = {
+        ...completeMockPlan,
+        revenue: {
+          revenueStreams: [
+            { stream: 'Self-Serve Tier', description: 'Self-serve monthly plan', pricingModel: '$49/mo' },
+            { stream: 'Enterprise Tier', description: 'Dedicated support and SLA', pricingModel: '$499/mo' }
+          ],
+          pricingStrategy: 'Tiered SaaS subscription',
+          expectedMonthlyRevenue: '$25,000 / month',
+          growthOpportunities: [
+            'White-label integration for partners',
+            'Marketplace transaction fees'
+          ]
+        }
+      };
+
+      const slides = buildPitchDeckSlides(planWithObjectRevenue);
+      expect(slides[4].revenueStreams).toHaveLength(2);
+      expect(slides[4].revenueStreams[0].model).toBe('Self-Serve Tier');
+      expect(slides[4].revenueStreams[0].projection).toBe('$49/mo');
+
+      const doc = buildBusinessPlanDocument(planWithObjectRevenue);
+      expect(doc.revenueModel).toHaveLength(2);
+      expect(doc.revenueModel[0].model).toBe('Self-Serve Tier');
+      expect(doc.revenueModel[0].projection).toBe('$49/mo');
+    });
   });
 
   describe('triggerPrintWithTitle', () => {

@@ -478,7 +478,7 @@ Single source of truth for the project lifecycle, architecture, progress, known 
   - Chunk 6.4: CI Pipeline & Dependency Cleanup (Completed - `32d11a0`)
 - **Phase 7: AI Pipeline Optimization & Idea Refinement (ACTIVE)**
   - Chunk 7.0: AI Pipeline & Input-to-Output Audit (Completed - Audit Only)
-  - Chunk 7.1: Prompt Sanitization, Defect Remediation & Backend Schema Validation (Scheduled)
+  - Chunk 7.1: AI Reliability Foundation (Completed - `fix: validate AI outputs and preserve startup inputs`)
   - Chunk 7.2: Structured Startup Brief Schema & Single-Call Generator (Scheduled)
   - Chunk 7.3: Interactive Refinement UI & Brief Confirmation Workflow (Scheduled)
   - Chunk 7.4: Coordinated 6-Module Generation & Cross-Module Contextual Integration (Scheduled)
@@ -519,6 +519,70 @@ Designed a versioned, user-confirmed canonical startup brief to serve as the sha
 
 ---
 
+## 7.13 Completed in Chunk 7.1 — AI Reliability Foundation
+
+### 1. Executive Summary & Deliverables
+Chunk 7.1 remediated the immediate data loss, string pollution, and schema integrity defects in Startup-AI's generative pipeline without prematurely initiating Chunk 7.2's Startup Brief refinement workflow.
+
+Key deliverables:
+1. **Shared Prompt Normalization Layer (`backend/utils/promptUtils.js`)**:
+   - `normalizeInput`: Coerces inputs safely, strips whitespaces, and eliminates literal `"undefined"`, `"null"`, and `'[object Object]'` string pollution across all six AI prompts.
+   - `buildStartupPromptContext`: Normalizes seven startup fields (`startupName`, `industry`, `problem`, `solution`, `targetAudience`, `usp`, `summary`) and formats standardized context and dedicated summary sections.
+2. **Defect Remediations**:
+   - **User Personas Problem Statement**: Injected `data.problem` into `backend/models/personasModel.js`, providing essential context for user pain points and goals.
+   - **Form Summary Preservation**: Updated `frontend/src/pages/IdeaInputPage.js` to forward `formData.summary` in payload, embedded by backend controllers and consumed across all 6 model prompts.
+   - **Revenue Model Preservation**: Removed frontend destructive array conversion in `IdeaInputPage.js`, storing full revenue object (`expectedMonthlyRevenue`, `revenueStreams`, `pricingStrategy`, `growthOpportunities`).
+   - **Growth Opportunities Display**: Updated `DashboardTabs.js` to render monthly run-rate badges, streams, pricing strategy, and growth opportunities. Preserved dual-format compatibility for legacy plans.
+   - **Investor Pitch Deck Slide Composition**: Standardized `PitchPreviewPage.js` Slide 7 heading to "Execution Summary" with defensive fallback, resolving duplicate "AI-Generated Elevator Pitch:" titles while keeping the `{ elevatorPitch }` API contract intact.
+   - **Dashboard Empty-State Alignment**: Replaced non-functional single-module regeneration buttons with informative status text and a functional "Start New Business Plan" action (`navigate('/start')`).
+3. **Deterministic Output Validation Layer (`backend/utils/responseValidators.js`)**:
+   - Post-parse schema validators for all six modules: `validateLeanCanvas`, `validateMVP`, `validateRevenue`, `validatePersonas`, `validateCompetitors`, `validatePitch`.
+   - Rejects malformed or incomplete Gemini responses with `SchemaValidationError` (code `MODEL_OUTPUT_INVALID`, HTTP 502 Bad Gateway) via `apiError.js`, strictly shielding API keys and internal stack traces from client exposure.
+4. **Comprehensive Automated Test Coverage**:
+   - `backend/tests/promptSanitization.test.js` (4 suites): Verifies normalization, summary inclusion, persona problem injection, and absence of `"undefined"`/`"null"` strings.
+   - `backend/tests/responseValidators.test.js` (7 suites): Verifies schema validation and rejection of malformed structures for all 6 modules, plus safe HTTP 502 mapping.
+   - Updated existing suites (`uspDataFlow.test.js`, `jsonParser.test.js`, `reopenPlan.test.js`, `exportHelpers.test.js`) to adhere to new schema requirements.
+   - Full test run: 23 backend suites pass (0 errors), 13 frontend suites pass (99/99 tests, 0 errors).
+   - Frontend production build succeeds cleanly (exit code 0).
+
+### 2. Defect Remediation Comparison Matrix
+
+| Defect | Before Chunk 7.1 | After Chunk 7.1 |
+|---|---|---|
+| **User Personas Problem** | `backend/models/personasModel.js` omitted `data.problem`. Gemini invented pain points in a vacuum. | Problem statement normalized and injected into prompt context. Personas derive directly from the founder's defined problem. |
+| **Idea Summary Intake** | `IdeaInputPage.js` dropped `formData.summary`. Discarded before dispatch to AI. | Payload includes `summary`. Context builder injects dedicated summary section into all 6 prompts. |
+| **Revenue Model Data Loss** | `IdeaInputPage.js` destructively truncated backend object into 2-element array; discarded `growthOpportunities`. | Full object retained in pipeline and persistence. `DashboardTabs.js` renders growth opportunities, streams, and pricing strategy. Dual-format fallback preserved. |
+| **String Pollution** | Omitted optional inputs evaluated to `"undefined"` or `"null"` in template literals. | `promptUtils.normalizeInput` substitutes safe human fallbacks (e.g., `'Not specified'`). Zero literal `"undefined"` strings. |
+| **Investor Pitch Heading** | Slide 7 duplicated "AI-Generated Elevator Pitch:" heading with Slide 1. | Slide 7 heading renamed to "Execution Summary" matching print view; defensive fallbacks added; `{ elevatorPitch }` API contract preserved. |
+| **Output Validation** | Syntactic JSON parsing only; missing keys or invalid structures passed as HTTP 200. | Semantic validators enforce required keys and non-empty collections; returns HTTP 502 `MODEL_OUTPUT_INVALID` on malformed outputs. |
+| **Disconnected Buttons** | Empty states rendered non-functional buttons advertising nonexistent single-module regeneration endpoints. | Informative empty states with functional `navigate('/start')` CTA ("Start New Business Plan"). |
+
+### 3. Module Validation Contracts
+
+| Module | Validator Function | Contract Requirements | Error Code on Failure |
+|---|---|---|---|
+| **Lean Canvas** | `validateLeanCanvas` | Non-null object with all 9 canonical keys (`problem`, `solution`, `uniqueValueProposition`, `unfairAdvantage`, `customerSegments`, `keyMetrics`, `channels`, `costStructure`, `revenueStreams`). Each key must be non-empty array of strings or non-empty string. | `MODEL_OUTPUT_INVALID` (502) |
+| **MVP Roadmap** | `validateMVP` | Non-null object with `coreFeatures` (non-empty array), `phases` (non-empty array with `phase` and deliverables/features), `techStack` (non-empty array or object). | `MODEL_OUTPUT_INVALID` (502) |
+| **Revenue Model** | `validateRevenue` | Accepts canonical object (`revenueStreams` non-empty array, `pricingStrategy` string/object, optional `expectedMonthlyRevenue` and `growthOpportunities`) OR legacy array format. | `MODEL_OUTPUT_INVALID` (502) |
+| **User Personas** | `validatePersonas` | Non-empty array or object containing array of personas with at least 1 persona containing `name` and `painPoints` or `goals`. | `MODEL_OUTPUT_INVALID` (502) |
+| **Competitor Analysis** | `validateCompetitors` | Non-empty array or object containing array of competitors with at least 1 competitor containing `name` and competitive evaluation. | `MODEL_OUTPUT_INVALID` (502) |
+| **Investor Pitch** | `validatePitch` | Non-null object with `elevatorPitch` string (minimum 10 characters). | `MODEL_OUTPUT_INVALID` (502) |
+
+### 4. Build & Production Verification
+- **Backend Test Suite**: 23 test suites passing cleanly with 0 errors across 250+ assertions.
+- **Frontend Test Suite**: 13 test suites passing cleanly with 0 errors across 99 assertions.
+- **Frontend Production Build**: `npm run build` completed cleanly (exit code 0).
+- **Warnings Noted**:
+  - Webpack browserslist data update recommendation (`browserslist: caniuse-lite is 11 months old`).
+  - Landing page lint warnings for `#` anchor hrefs (`jsx-a11y/anchor-is-valid`).
+- **Code Hygiene**: `git diff --check` executed with 0 trailing whitespace or formatting warnings.
+
+### 5. Explicit Scope Boundaries & Next Milestone
+- **Not Included in Chunk 7.1**: The interactive Startup Brief refinement workflow, `/refine` frontend page, single-call Draft Brief generator endpoint, and SQLite Migration 006 (`brief TEXT` column) were intentionally deferred.
+- **Next Milestone**: **Chunk 7.2 — Structured Startup Brief Schema & Single-Call Generator**.
+
+---
+
 ## 10. Git State
 
 - **Branch**: `main`
@@ -530,6 +594,7 @@ Designed a versioned, user-confirmed canonical startup brief to serve as the sha
 - **Phase 5 Status**: COMPLETED
 - **Phase 6 Status**: COMPLETED
 - **Phase 7.0 Status**: COMPLETED (Audit Only)
+- **Chunk 7.1 Status**: COMPLETED (`fix: validate AI outputs and preserve startup inputs`)
 
 ---
 
@@ -537,6 +602,12 @@ Designed a versioned, user-confirmed canonical startup brief to serve as the sha
 
 | Verification Check | Result | Details |
 |---|---|---|
+| **Chunk 7.1 Prompt Sanitization Suite (4 suites)** | PASS | `backend/tests/promptSanitization.test.js`: Verifies `normalizeInput`, `buildStartupPromptContext`, summary inclusion, persona problem injection, and absence of literal `"undefined"`/`"null"` strings across all 6 model prompts. |
+| **Chunk 7.1 Response Validators Suite (7 suites)** | PASS | `backend/tests/responseValidators.test.js`: Deterministic validation and rejection of malformed outputs across all 6 generative modules, plus safe HTTP 502 `MODEL_OUTPUT_INVALID` error mapping without secret leakage. |
+| **Backend Full Test Suite (23 suites)** | PASS | `npm test` in `backend` runs all 23 test suites cleanly with 0 errors across 250+ assertions. |
+| **Frontend Full Test Suite (13 suites, 99 tests)** | PASS | `npm test -- --watchAll=false src` runs all 13 frontend test suites cleanly (99/99 tests pass) with 0 errors. |
+| **Frontend Production Build** | PASS | `npm run build` compiles cleanly (exit code 0) with zero JavaScript errors (`main.9cbfd097.js` at 124.96 kB gzipped, on-demand Excel chunk at 256.73 kB gzipped). |
+| **Git Diff Code Hygiene Check** | PASS | `git diff --check` executes cleanly with 0 trailing whitespace, carriage-return, or formatting warnings. |
 | **Phase 7.0 AI Pipeline Audit** | PASS | End-to-end trace from frontend form input to dashboard tabs. 7 confirmed defects cataloged with line-level code evidence. Structured Startup Brief schema and refinement workflow designed. Phase 7 roadmap established. |
 | **Backend Test Suite Regression Check (21 suites)** | PASS | `npm test` in `backend` runs all 21 test suites cleanly with 0 errors across 230+ assertions. |
 | **Frontend Test Suite Regression Check (13 suites, 98 tests)** | PASS | `npm test -- --watchAll=false src` runs all 13 frontend test suites cleanly (98/98 tests pass) with 0 errors. |

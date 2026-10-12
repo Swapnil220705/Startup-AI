@@ -1811,3 +1811,91 @@ To achieve cross-module consistency and user alignment without breaking existing
 - **Database**: Add nullable `brief TEXT` column to `plans` table via Migration 006. Existing plans have `brief = NULL` and remain fully readable.
 - **Frontend**: Dashboard gracefully handles plans with or without `brief`.
 - **Security & Trials**: Trial status check and atomic claiming remain authoritative and untouched.
+
+---
+
+## 20. AI Reliability Foundation & Response Validation (Chunk 7.1)
+
+### 20.1 Overview & Architectural Objectives
+Chunk 7.1 resolved the immediate operational and data integrity defects cataloged in the Phase 7.0 audit without prematurely beginning Chunk 7.2's Startup Brief refinement workflow. It established:
+1. **Deterministic Input Sanitization**: Shared normalization preventing string pollution and preserving previously dropped form data.
+2. **Deterministic Output Validation**: Post-parse schema validators for all six generative modules that reject malformed Gemini responses with HTTP 502 `MODEL_OUTPUT_INVALID` without leaking secrets.
+3. **End-to-End Revenue Data Preservation**: Elimination of frontend destructive truncation, preserving full revenue streams, pricing strategies, monthly run-rates, and growth opportunities across storage, dashboard rendering, PDF exports, and Excel generation.
+4. **Investor Pitch Composition Alignment**: Standardized presentation slides to avoid duplicate elevator pitch headings while preserving the `{ elevatorPitch }` API contract.
+5. **Dashboard Empty-State Alignment**: Functional empty states that gracefully direct users to create a new plan rather than advertising non-existent single-module regeneration routes.
+
+### 20.2 Shared Prompt Sanitization Layer (`backend/utils/promptUtils.js`)
+To resolve literal `"undefined"` and `"null"` string pollution across Gemini prompts and ensure user-provided context is preserved:
+- **`normalizeInput(val, fallback = 'Not specified')`**: Coerces non-string values safely, trims whitespace, and rejects sentinel strings (`'undefined'`, `'null'`, `'[object Object]'`). If empty or invalid, safely substitutes the fallback.
+- **`buildStartupPromptContext(data)`**: Normalizes all seven core startup input dimensions (`startupName`, `industry`, `problem`, `solution`, `targetAudience`, `usp`, `summary`):
+  - Normalizes `startupName` (fallback: `'Untitled Startup'`)
+  - Normalizes `industry` (fallback: `'General Technology / Business'`)
+  - Normalizes `problem` (fallback: `'Not specified'`)
+  - Normalizes `solution` (fallback: `'Not specified'`)
+  - Normalizes `targetAudience` (fallback: `'Not specified'`)
+  - Normalizes `usp` (fallback: `'Not specified'`)
+  - Normalizes `summary` (fallback: `''`)
+  - Produces formatted text blocks:
+    - `summarySection`: Dedicated prompt section containing the founder's detailed summary (omitted if blank).
+    - `coreContextText`: Standardized multi-line context string for injection into model prompts.
+
+#### Defect Remediations:
+- **User Personas Prompt**: `backend/models/personasModel.js` now consumes `buildStartupPromptContext` and explicitly injects the user's `problem` statement into the persona generation prompt.
+- **Form Summary Preservation**: `frontend/src/pages/IdeaInputPage.js` now includes `summary: formData.summary ? String(formData.summary).trim() : ''` in generation payloads, which is ingested by backend controllers and embedded across all six model prompts.
+
+### 20.3 Deterministic Lightweight Response Validation Layer (`backend/utils/responseValidators.js`)
+All six backend model functions now invoke dedicated schema validators immediately after parsing JSON from Gemini:
+```text
+Gemini 3.8 Flash Response
+           │
+           ▼
+jsonParser.parseAIResponse(text)
+           │ (Syntactic JSON validation: strips markdown fences, trailing commas, BOMs)
+           ▼
+responseValidators.validate<Module>(parsedJson)
+           │ (Semantic Schema validation: checks required keys, types, and non-empty collections)
+           ├── PASS ──► Return validated object to controller ──► HTTP 200 OK
+           │
+           └── FAIL ──► Throw SchemaValidationError(code: 'MODEL_OUTPUT_INVALID', status: 502)
+                              │
+                              ▼
+                        sendApiError(res, err) ──► HTTP 502 Bad Gateway
+                        (Safe client message, zero API keys or internal stack traces)
+```
+
+#### Module Validation Contracts:
+1. **Lean Canvas (`validateLeanCanvas`)**:
+   - Requires non-null object with all 9 canonical Lean Canvas keys: `problem`, `solution`, `uniqueValueProposition`, `unfairAdvantage`, `customerSegments`, `keyMetrics`, `channels`, `costStructure`, `revenueStreams`.
+   - Each key must be a non-empty array of strings or a non-empty string.
+2. **MVP Roadmap (`validateMVP`)**:
+   - Requires non-null object containing `coreFeatures` (non-empty array), `phases` (non-empty array with `phase` and `deliverables` or `features`), and `techStack` (non-empty array or object).
+3. **Revenue Model (`validateRevenue`)**:
+   - Accepts either the canonical object schema or legacy array format:
+     - Canonical Object: Requires non-empty `revenueStreams` array (each with `name` or `stream` or `model`), `pricingStrategy` (string or object), and optional `expectedMonthlyRevenue` and `growthOpportunities` array.
+     - Legacy Array: Non-empty array where items have `model` and `description` or `projection`.
+4. **User Personas (`validatePersonas`)**:
+   - Accepts array directly or `{ personas: [...] }` / `{ userPersonas: [...] }`.
+   - Requires non-empty array with at least 1 persona containing `name` and `painPoints` (or `goals`).
+5. **Competitor Analysis (`validateCompetitors`)**:
+   - Accepts array directly or `{ competitors: [...] }` / `{ directCompetitors: [...] }`.
+   - Requires non-empty array with at least 1 competitor containing `name` and `strengths` / `weaknesses` / `differentiators` / `threatLevel`.
+6. **Investor Pitch (`validatePitch`)**:
+   - Requires non-null object with non-empty `elevatorPitch` string (minimum 10 characters).
+
+### 20.4 Revenue Model Preservation & Dual-Format Support
+To resolve the permanent data loss of `growthOpportunities` while maintaining backward compatibility:
+1. **Pipeline Retention**: `IdeaInputPage.js` now stores the full `resData` directly in `persistedModules.revenue` instead of truncating into a 2-element array.
+2. **Dual-Format Normalization**:
+   - `frontend/src/components/DashboardTabs.js`: `RevenueTab` renders both the canonical object schema (with Monthly Revenue Projection badge, Revenue Streams cards, Pricing Strategy card, and Growth Opportunities card) and legacy array format.
+   - `frontend/src/utils/exportHelpers.js`: `extractRevenueStreams` helper normalizes revenue streams across object and array representations for Pitch Deck PDF export and Business Plan document generation.
+   - `frontend/src/utils/financialExportHelpers.js`: Adheres to dual-format normalization for Excel generation.
+3. **Persistence Round-Trip**: SQLite stores full serialized revenue JSON; retrieving and reopening a plan preserves `growthOpportunities`.
+
+### 20.5 Investor Pitch Deck Contract & Presentation Composition
+- **API Contract Retained**: `pitchModel.js` preserves the `{ elevatorPitch: "..." }` response contract, avoiding breaking changes across clients.
+- **Frontend Slide 7 Heading Aligned**: Updated `PitchPreviewPage.js` Slide 7 heading from repeating "AI-Generated Elevator Pitch:" to "Execution Summary" with a defensive fallback, matching `PitchDeckPrintView.js` and creating a coherent pitch presentation narrative.
+
+### 20.6 Dashboard Empty-State Actions
+The backend does not support ad-hoc single-module regeneration (`PATCH /api/plans/:id` updates only metadata). Previously, empty state cards rendered disconnected buttons that advertised nonexistent regeneration flows:
+- **Informative Empty States**: Replaced non-functional buttons with clear, helpful context explaining that the section was not generated or unavailable for this plan.
+- **Functional Action CTA**: Added a working "Start New Business Plan" action (`navigate('/start')`) across Lean Canvas, MVP, Revenue, Competitors, and Personas tabs, providing users with a clear and working path forward.

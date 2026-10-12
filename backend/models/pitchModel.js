@@ -1,18 +1,15 @@
 const { callGemini } = require('../services/geminiClient');
 const { parseGeminiJson } = require('../utils/jsonParser');
+const { buildStartupPromptContext } = require('../utils/promptUtils');
+const { validatePitch } = require('../utils/responseValidators');
 
 const generatePitch = async (data) => {
+  const contextBlock = buildStartupPromptContext(data);
+
   const prompt = `
   You are a pitch deck expert helping startups craft powerful elevator pitches that are short, sharp, and investor-friendly.
 
-  Use the following startup details to generate a compelling pitch:
-
-  Startup Name: ${data.startupName}
-  Problem: ${data.problem}
-  Solution: ${data.solution}
-  Industry: ${data.industry}
-  Target Audience: ${data.targetAudience}
-  Unique Value or USP: ${data.usp || 'Not specified'}
+${contextBlock}
 
   Guidelines:
   - 2 to 4 sentences only.
@@ -28,8 +25,12 @@ const generatePitch = async (data) => {
 
   try {
     const rawText = await callGemini(prompt, { context: 'Pitch' });
-    return parseGeminiJson(rawText);
+    const parsed = parseGeminiJson(rawText);
+    return validatePitch(parsed);
   } catch (error) {
+    if (error.name === 'SchemaValidationError') {
+      throw error;
+    }
     console.error('Gemini Pitch Model Error:', error.response?.data || error.message);
     const modelError = new Error('Failed to generate Elevator Pitch from Gemini');
     modelError.status = error.response?.status || (error.code ? 503 : 500);

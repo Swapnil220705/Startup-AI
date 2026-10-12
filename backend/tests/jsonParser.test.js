@@ -329,7 +329,7 @@ async function testModelIntegration() {
         candidates: [{
           content: {
             parts: [{
-              text: `Here is the requested Lean Canvas:\n\`\`\`JSON\n{\n  "startupName": "AutoPitch AI",\n  "problem": "Pitching is hard",\n  "solution": "AI plans",\n  "uniqueValueProposition": "Instant plans",\n  "keyMetrics": "Active users",\n}\n\`\`\`\nHope this helps!`
+              text: `Here is the requested Lean Canvas:\n\`\`\`JSON\n{\n  "startupName": "AutoPitch AI",\n  "problem": "Pitching is hard",\n  "solution": "AI plans",\n  "uniqueValueProposition": "Instant plans",\n  "customerSegments": "Founders",\n  "keyMetrics": "Active users",\n  "channels": "Direct sales",\n  "costStructure": "Hosting",\n  "revenueStreams": "SaaS",\n  "unfairAdvantage": "Proprietary model",\n}\n\`\`\`\nHope this helps!`
             }]
           }
         }]

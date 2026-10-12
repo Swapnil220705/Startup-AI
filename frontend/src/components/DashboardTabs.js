@@ -162,7 +162,7 @@ export const OverviewTab = ({ data, isDark }) => {
   );
 };
 
-export const LeanCanvasTab = ({ data, isDark }) => {
+export const LeanCanvasTab = ({ data, isDark, navigate }) => {
   const leanCanvasData = data.leanCanvas || {};
   
   return (
@@ -225,11 +225,15 @@ export const LeanCanvasTab = ({ data, isDark }) => {
             <Target className="w-8 h-8 text-gray-400" />
           </div>
           <h3 className="text-xl font-semibold mb-2">No Lean Canvas Data</h3>
-          <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-6`}>
-            No lean canvas data available. Please try generating the business plan again.
+          <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-6 max-w-md mx-auto`}>
+            Lean canvas data is not available for this plan. You can generate a complete new plan with all modules from the idea intake.
           </p>
-          <button className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-semibold">
-            Generate Canvas
+          <button
+            onClick={() => navigate ? navigate('/start') : (window.location.href = '/start')}
+            className="inline-flex items-center space-x-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg"
+          >
+            <span>Start New Business Plan</span>
+            <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -237,7 +241,7 @@ export const LeanCanvasTab = ({ data, isDark }) => {
   );
 };
 
-export const MVPTab = ({ data, isDark }) => {
+export const MVPTab = ({ data, isDark, navigate }) => {
   const mvpData = data.mvp;
   const coreFeatures = mvpData?.coreFeatures || (Array.isArray(mvpData) ? mvpData : []);
   const hasMvpData = Boolean(
@@ -270,9 +274,16 @@ export const MVPTab = ({ data, isDark }) => {
             <Rocket className="w-8 h-8 text-gray-400" />
           </div>
           <h3 className="text-xl font-semibold mb-2">No MVP Data Available</h3>
-          <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-6`}>
-            No MVP plan data available. This module was not generated.
+          <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-6 max-w-md mx-auto`}>
+            MVP plan data is not available for this plan. You can generate a complete new plan with all modules from the idea intake.
           </p>
+          <button
+            onClick={() => navigate ? navigate('/start') : (window.location.href = '/start')}
+            className="inline-flex items-center space-x-2 bg-gradient-to-r from-yellow-500 to-orange-600 text-white px-6 py-3 rounded-xl hover:from-yellow-600 hover:to-orange-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg"
+          >
+            <span>Start New Business Plan</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
         </div>
       ) : (
         <div className="grid lg:grid-cols-3 gap-8">
@@ -395,9 +406,55 @@ export const MVPTab = ({ data, isDark }) => {
   );
 };
 
-export const RevenueTab = ({ data, isDark }) => {
-  const revenueData = data.revenue || [];
-  
+export const RevenueTab = ({ data, isDark, navigate }) => {
+  const rawRevenue = data.revenue;
+  const isArray = Array.isArray(rawRevenue) && rawRevenue.length > 0;
+  const isObject = rawRevenue && typeof rawRevenue === 'object' && !Array.isArray(rawRevenue) && (
+    rawRevenue.revenueStreams || rawRevenue.pricingStrategy || rawRevenue.expectedMonthlyRevenue || rawRevenue.growthOpportunities
+  );
+  const hasRevenueData = isArray || Boolean(isObject);
+
+  // Normalize streams, pricing strategy, monthly revenue, and growth opportunities
+  let streams = [];
+  let pricingStrategy = '';
+  let expectedMonthlyRevenue = '';
+  let growthOpportunities = null;
+
+  if (isArray) {
+    streams = rawRevenue;
+    const growthItem = rawRevenue.find(item => item && (item.model?.toLowerCase().includes('growth') || item.growthOpportunities));
+    if (growthItem) {
+      growthOpportunities = growthItem.description || growthItem.growthOpportunities;
+    }
+  } else if (isObject) {
+    pricingStrategy = rawRevenue.pricingStrategy || '';
+    expectedMonthlyRevenue = rawRevenue.expectedMonthlyRevenue || '';
+    growthOpportunities = rawRevenue.growthOpportunities || null;
+
+    if (Array.isArray(rawRevenue.revenueStreams)) {
+      streams = rawRevenue.revenueStreams.map((item, idx) => {
+        if (typeof item === 'object' && item !== null) {
+          return {
+            model: item.stream || item.model || `Revenue Stream ${idx + 1}`,
+            description: item.description || '',
+            projection: item.pricingModel || item.projection || ''
+          };
+        }
+        return {
+          model: `Revenue Stream ${idx + 1}`,
+          description: String(item),
+          projection: ''
+        };
+      });
+    } else if (typeof rawRevenue.revenueStreams === 'string') {
+      streams = [{
+        model: 'Primary Revenue Stream',
+        description: rawRevenue.revenueStreams,
+        projection: expectedMonthlyRevenue || ''
+      }];
+    }
+  }
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -417,78 +474,143 @@ export const RevenueTab = ({ data, isDark }) => {
         </div>
       </div>
 
-      {/* Revenue Models */}
-      {Array.isArray(revenueData) && revenueData.length > 0 ? (
-        <div className="grid gap-6">
-          {revenueData.map((model, index) => (
-            <div key={index} className={`group p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1`}>
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl flex items-center justify-center text-white text-lg font-bold">
-                    {index + 1}
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-green-600">
-                      {model.model || `Revenue Stream ${index + 1}`}
-                    </h3>
-                    <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                      Primary monetization strategy
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <span className={`px-4 py-2 rounded-full text-sm font-semibold ${isDark ? 'bg-green-900/30 text-green-400 border border-green-800' : 'bg-green-100 text-green-800 border border-green-200'}`}>
-                    {model.projection || 'Projected'}
-                  </span>
-                  <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                    <TrendingUp className="w-4 h-4 text-white" />
-                  </div>
-                </div>
-              </div>
-              
-              <div className={`p-4 rounded-xl ${isDark ? 'bg-gray-700/50' : 'bg-gray-50'} group-hover:bg-green-50 transition-colors duration-300`}>
-                <p className={`leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                  {model.description || 'No description available'}
-                </p>
-              </div>
-              
-              {/* Revenue Metrics */}
-              <div className="grid grid-cols-3 gap-4 mt-6">
-                <div className={`p-3 rounded-lg ${isDark ? 'bg-gray-700/30' : 'bg-gray-50'} text-center`}>
-                  <div className="text-lg font-bold text-green-600">$10K</div>
-                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Initial Target</div>
-                </div>
-                <div className={`p-3 rounded-lg ${isDark ? 'bg-gray-700/30' : 'bg-gray-50'} text-center`}>
-                  <div className="text-lg font-bold text-green-600">$50K</div>
-                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>6 Month Goal</div>
-                </div>
-                <div className={`p-3 rounded-lg ${isDark ? 'bg-gray-700/30' : 'bg-gray-50'} text-center`}>
-                  <div className="text-lg font-bold text-green-600">$200K</div>
-                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Year 1 Target</div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
+      {!hasRevenueData ? (
         <div className={`p-8 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg text-center`}>
           <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
             <DollarSign className="w-8 h-8 text-gray-400" />
           </div>
           <h3 className="text-xl font-semibold mb-2">No Revenue Data</h3>
-          <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-6`}>
-            No revenue data available. Please try generating the business plan again.
+          <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-6 max-w-md mx-auto`}>
+            Revenue model data is not available for this plan. You can generate a complete new plan with all modules from the idea intake.
           </p>
-          <button className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 font-semibold">
-            Generate Revenue Plan
+          <button
+            onClick={() => navigate ? navigate('/start') : (window.location.href = '/start')}
+            className="inline-flex items-center space-x-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg"
+          >
+            <span>Start New Business Plan</span>
+            <ArrowRight className="w-4 h-4" />
           </button>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Target Revenue Projection Run-Rate if available from AI */}
+          {expectedMonthlyRevenue && (
+            <div className={`p-6 rounded-2xl ${isDark ? 'bg-emerald-950/30 border border-emerald-800/50' : 'bg-emerald-50 border border-emerald-100'} shadow-md`}>
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                    Target Monthly Revenue Projection
+                  </h4>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white mt-0.5">
+                    {expectedMonthlyRevenue}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Revenue Streams */}
+          {streams.length > 0 && (
+            <div className="grid gap-6">
+              {streams.map((model, index) => (
+                <div key={index} className={`group p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1`}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl flex items-center justify-center text-white text-lg font-bold">
+                        {index + 1}
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-green-600">
+                          {model.model || model.stream || `Revenue Stream ${index + 1}`}
+                        </h3>
+                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                          Monetization stream
+                        </p>
+                      </div>
+                    </div>
+                    {model.projection && (
+                      <span className={`px-4 py-2 rounded-full text-sm font-semibold ${isDark ? 'bg-green-900/30 text-green-400 border border-green-800' : 'bg-green-100 text-green-800 border border-green-200'}`}>
+                        {model.projection}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className={`p-4 rounded-xl ${isDark ? 'bg-gray-700/50' : 'bg-gray-50'} group-hover:bg-green-50 transition-colors duration-300`}>
+                    <p className={`leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                      {model.description || 'No description available'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pricing Strategy */}
+          {pricingStrategy && (
+            <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg`}>
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center text-white">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">Pricing Strategy</h3>
+                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Monetization model & value capture approach
+                  </p>
+                </div>
+              </div>
+              <div className={`p-4 rounded-xl ${isDark ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+                <p className={`leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {pricingStrategy}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Growth Opportunities */}
+          {growthOpportunities && (
+            <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50 border border-gray-700' : 'bg-white border border-gray-200'} shadow-lg`}>
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center text-white">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">Growth & Expansion Opportunities</h3>
+                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Strategic avenues for business expansion and scaling
+                  </p>
+                </div>
+              </div>
+              {Array.isArray(growthOpportunities) ? (
+                <div className="grid md:grid-cols-2 gap-4">
+                  {growthOpportunities.map((opp, idx) => (
+                    <div key={idx} className={`flex items-start space-x-3 p-4 rounded-xl ${isDark ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+                      <div className="w-2 h-2 bg-emerald-500 rounded-full mt-2 flex-shrink-0" />
+                      <span className={`text-sm leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {typeof opp === 'string' ? opp : JSON.stringify(opp)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className={`p-4 rounded-xl ${isDark ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+                  <p className={`leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    {growthOpportunities}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 };
 
-export const CompetitorsTab = ({ data, isDark }) => {
+export const CompetitorsTab = ({ data, isDark, navigate }) => {
   const competitors = data.competitors || [];
   
   return (
@@ -595,11 +717,15 @@ export const CompetitorsTab = ({ data, isDark }) => {
             <Target className="w-8 h-8 text-gray-400" />
           </div>
           <h3 className="text-xl font-semibold mb-2">No Competitor Data</h3>
-          <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-6`}>
-            No competitor data available. Please try generating the business plan again.
+          <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-6 max-w-md mx-auto`}>
+            Competitor analysis data is not available for this plan. You can generate a complete new plan with all modules from the idea intake.
           </p>
-          <button className="bg-gradient-to-r from-red-600 to-pink-600 text-white px-6 py-3 rounded-xl hover:from-red-700 hover:to-pink-700 transition-all duration-300 font-semibold">
-            Analyze Competitors
+          <button
+            onClick={() => navigate ? navigate('/start') : (window.location.href = '/start')}
+            className="inline-flex items-center space-x-2 bg-gradient-to-r from-red-600 to-pink-600 text-white px-6 py-3 rounded-xl hover:from-red-700 hover:to-pink-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg"
+          >
+            <span>Start New Business Plan</span>
+            <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -607,7 +733,7 @@ export const CompetitorsTab = ({ data, isDark }) => {
   );
 };
 
-export const PersonasTab = ({ data, isDark }) => {
+export const PersonasTab = ({ data, isDark, navigate }) => {
   const personas = data.personas || [];
   
   return (
@@ -715,11 +841,15 @@ export const PersonasTab = ({ data, isDark }) => {
             <Users className="w-8 h-8 text-gray-400" />
           </div>
           <h3 className="text-xl font-semibold mb-2">No Persona Data</h3>
-          <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-6`}>
-            No persona data available. Please try generating the business plan again.
+          <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} mb-6 max-w-md mx-auto`}>
+            User persona data is not available for this plan. You can generate a complete new plan with all modules from the idea intake.
           </p>
-          <button className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all duration-300 font-semibold">
-            Create Personas
+          <button
+            onClick={() => navigate ? navigate('/start') : (window.location.href = '/start')}
+            className="inline-flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg"
+          >
+            <span>Start New Business Plan</span>
+            <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       )}
